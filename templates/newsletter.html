@@ -1,0 +1,37 @@
+<!-- newsletter.html -->
+{% extends "newsletter_content.html" %}
+
+{% block content %}
+<!-- The Move Event -->
+{% if themove_event %}
+<div style="padding:20px; margin-bottom:20px; border:1px solid #ddd;">
+	 <h2>{{ themove_event.event.name }}</h2>
+	 <!-- Add other details -->
+</div>
+{% endif %}
+
+<!-- Upcoming Events -->
+<div style="padding:20px; margin-bottom:20px; border:1px solid #ddd;">
+	 <h2>Upcoming Events</h2>
+	 {% for event in upcoming_events %}
+	 <p>{{ event.name }} - {{ event.date.strftime('%Y-%m-%d') }}</p>
+	 {% endfor %}
+</div>
+
+<!-- Sponsors -->
+<div style="padding:20px; margin-bottom:20px; border:1px solid #ddd;">
+	 <h2>Sponsors</h2>
+	 {% for sponsor in sponsors %}
+	 <img src="{{ url_for('static', filename=sponsor.image_path) }}" alt="{{ sponsor.name }}" style="max-width:100px;">
+	 {% endfor %}
+</div>
+
+<!-- Featured Images -->
+<div style="padding:20px; margin-bottom:20px; border:1px solid #ddd;">
+	 <h2>Featured</h2>
+	 {% for image in featured_images %}
+	 <img src="{{ url_for('static', filename=image.image_path) }}" alt="Featured Image" style="max-width:200px;">
+	 <p>{{ image.description }}</p>
+	 {% endfor %}
+</div>
+{% endblock %}

@@ -5,11 +5,18 @@
 		box-sizing: border-box;
 }
 
+html, body {
+	 height: 100%;
+	 margin: 0;
+}
+
 body {
 		font-family: Arial, sans-serif;
 		background-color: #f4f4f4;
 		color: #333;
 		line-height: 1.6;
+	 display: flex;
+	 flex-direction: column;
 }
 
 header {
@@ -19,6 +26,8 @@ header {
 		text-align: center;
 }
 
+header img {width: 325px;}
+
 header h1 a {
 	color: #fff;
 }
@@ -27,6 +36,7 @@ header nav {
 		display: flex;
 		justify-content: center;
 		gap: 15px;
+		margin-top: 10px;
 }
 
 header nav a {
@@ -58,36 +68,128 @@ nav a {
 }
 
 main {
-		padding: 20px;
+	 flex: 1;
+	 padding: 20px;
+	 display: flex;
+	 flex-direction: column;
 }
 
+
 footer {
-		text-align: center;
-		padding: 20px;
-		background: #333;
-		color: #fff;
-		position: absolute;
-		bottom: 0;
-		width: 100%;
+	 text-align: center;
+	 padding: 20px;
+	 background: #333;
+	 color: #fff;
+	 width: 100%;
 }
+
 
 .error {
 		color: red;
 		font-size: 0.8em;
 }
+
+.container h1 {text-align: center;}
 /* Card Style */
+
+
 .card {
-		background-color: white;
-		border: 1px solid #ddd;
-		border-radius: 8px;
-		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-		margin: 10px;
-		padding: 20px;
-		max-width: 400px; /* Adjust as needed */
+  width: 300px; /* Fixed width */
+  height: 320px; /* Fixed height, slightly larger than width */
+  margin: auto;
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  display: flex;
+	  position: relative;
+  flex-direction: column;
+  cursor: pointer;
+transition: transform 0.3s ease, box-shadow 0.3s ease; /* Add smooth transition for transform and shadow */
+
+}
+
+.event-image-container {
+  height: 150px; /* Fixed height for image */
+  overflow: hidden; /* Ensures the image does not break the card's shape */
+}
+
+.event-image-container img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* Ensures the image covers the area, might be cropped */
+}
+
+.card-content {
+  padding: 15px;
+  text-align: center;
+  background-color: white;
+  color: #333;
+  flex-grow: 1; /* Takes up the rest of the space in the card */
+}
+
+.event-location, .event-date {
+  color: #555;
+}
+
+.card-content h2 {line-height: 1.2;}
+
+.card::before {
+	 content: '';
+	 position: absolute;
+	 top: 0;
+	 right: 0;
+	 bottom: 0;
+	 left: 0;
+	 background: rgba(0, 0, 0, 0);
+	 transition: background 0.3s;
+}
+
+
+
+.card:hover {
+  transform: translateY(-5px); /* Move card up slightly */
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2); /* Larger shadow for "raised" effect */
+}
+
+.card-link {
+ text-decoration: none; /* Removes underline from links */
+ color: inherit;
+}
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .card-container {
+	 grid-template-columns: 1fr; /* Single column layout */
+  }
+  .card {
+	 width: 100%; /* Full width on smaller screens */
+	 margin-bottom: 20px; /* Space between cards */
+  }
+}
+
+@media (min-width: 601px) {
+  .card-container {
+	 grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); /* Adjust number of cards based on available width */
+  }
+}
+
+/* Medium screens (small desktops/large tablets): 3 cards per row */
+@media (min-width: 901px) and (max-width: 1200px) {
+  .card-container {
+	 grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Large screens: 4 cards per row */
+@media (min-width: 1201px) {
+  .card-container {
+	 grid-template-columns: repeat(4, 1fr);
+  }
 }
 
 /* Form Style within Card */
-.card form {
+.detail-card form {
 		display: grid;
 		grid-gap: 10px;
 }
@@ -124,25 +226,139 @@ footer {
 }
 /* Ensure the container centers everything and has some padding */
 .card-container {
-		display: flex;
-		justify-content: center;
-		align-items: center;
-		min-height: 10vh; /* Adjust if necessary to fit your design */
-		padding: 20px;
+  display: grid;
+  gap: 20px;
+  padding: 20px;
+  margin: 0 auto;
+  max-width: 1400px;
 }
 
 /* Full width for form and its elements */
-.card {
-		width: 100%;
-		max-width: 500px; /* You can adjust max-width as needed */
-}
+
 
 /* Label and input full width */
-.card form label,
-.card form input,
-.card form button {
+.detail-card form label,
+.detail-card form input,
+.deatil-card form button {
 		width: 100%;
 		display: block;
+}
+
+.detail-container {
+	 display: flex;
+	 justify-content: center; /* Horizontally center the card */
+	 align-items: center; /* Vertically center the card (optional) */
+	 min-height: 10vh; /* Adjust as needed for vertical centering */
+	 padding: 20px;
+
+}
+
+.detail-card {
+	 width: 100%;
+	 max-width: 600px; /* Adjust the max width for detail card */
+	background-color: white;
+	border: 1px solid #ddd;
+	border-radius: 8px;
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	margin: 10px;
+	padding: 20px;
+}
+
+.venue-card {
+	 background-size: cover; /* Cover the entire area of the card */
+	 background-position: center; /* Center the background image */
+	 color: white; /* Text color */
+	 display: flex;
+	 justify-content: center; /* Center content horizontally */
+	 align-items: center; /* Center content vertically */
+	 height: 200px; /* Adjust the height as needed */
+	 position: relative; /* Needed for text positioning */
+	 text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5); /* Text drop shadow */
+	 transition: transform 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease;
+	 cursor: pointer;
+}
+
+.venue-card::before {
+	 content: '';
+	 position: absolute;
+	 top: 0;
+	 right: 0;
+	 bottom: 0;
+	 left: 0;
+	 background: rgba(0, 0, 0, 0); /* Initially transparent */
+	 transition: background 0.3s; /* Smooth transition for the overlay */
+	 border-radius: 8px; /* Match the border radius of the card */
+}
+
+.venue-card:hover::before {
+	 background: rgba(0, 0, 0, 0.5); /* Darken the card */
+}
+
+.venue-card:hover {
+	 transform: translateY(-5px);
+	 box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+	 background-color: #333; /* Or any dark color you prefer */
+	 color: #fff; /* Change text color to maintain contrast if needed */
+
+}
+
+.venue-card-link {
+	 text-decoration: none;
+	 color: inherit;
+}
+
+
+.venue-card h2 {
+	 z-index: 1; /* Ensure text is above the overlay */
+	text-align: center;
+	line-height: 1;
+}
+
+.venue-cover {
+	 background-size: cover;
+	 background-position: center;
+	 padding: 50px 0;
+	 text-align: center;
+	 color: white;
+	 /* Additional styling as needed */
+}
+
+
+.venue-cover {
+	 background-size: cover;
+	 background-position: center;
+	 padding: 100px 0;
+	 color: white;
+	 text-align: center;
+}
+
+.venue-title h1 {
+	 margin: 0;
+	 padding: 0;
+	 background: rgba(0, 0, 0, 0.5); /* Dark background for readability */
+	 display: inline-block;
+	 padding: 10px 20px;
+}
+
+.venue-details {
+	 margin-top: 20px;
+}
+
+.venue-info p {
+	 margin-bottom: 10px;
+}
+.venue-image-container img {
+	 width: 100%; /* Make image take up the entire container width */
+	 border-top-left-radius: 8px; /* Round the top left corner */
+	 border-top-right-radius: 8px; /* Round the top right corner */
+	 display: block; /* Remove any extra space below the image */
+}
+.instagram-placeholder {
+	 background-color: #f3f3f3;
+	 padding: 20px;
+	 margin-top: 20px;
+	 text-align: center;
+	 color: #333;
 }
 
 /* Ensure that the button styles do not conflict */
@@ -156,4 +372,530 @@ footer {
 .form-submit {
 		padding: 10px;
 		margin-bottom: 10px; /* Add space between form elements */
+}
+.flash-message {
+	 background-color: #f2dede;
+	 border-color: #ebccd1;
+	 color: #a94442;
+	 padding: 15px;
+	 margin-bottom: 20px;
+	 border: 1px solid transparent;
+	 border-radius: 4px;
+	text-align: center;
+
+	margin: 0px auto;
+
+}
+
+<!-- Additional CSS for styling -->
+
+.venue-cover {
+	 background-size: cover;
+	 background-position: center;
+	 padding: 100px 0;
+	 color: white;
+	 text-align: center;
+}
+
+.venue-title h1 {
+	 margin: 0;
+	 padding: 0;
+	 background: rgba(0, 0, 0, 0.5); /* Dark background for readability */
+	 display: inline-block;
+	 padding: 10px 20px;
+}
+
+.venue-container {
+	 display: flex;
+	 justify-content: center;
+}
+
+.venue-detail-card {
+	 background-color: white;
+	 border: 1px solid #ddd;
+	 border-radius: 8px;
+	 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	 margin: -80px 0 20px;
+	 padding: 20px;
+	 width: 80%; /* Adjust width as necessary */
+	 max-width: 600px; /* Set a maximum width */
+}
+
+.venue-info p, .social-links {
+	 margin-bottom: 10px;
+}
+
+.instagram-placeholder {
+	 background-color: #f3f3f3;
+	 padding: 20px;
+	 margin-top: 20px;
+	 text-align: center;
+	 color: #333;
+}
+
+.events-grid {
+	 display: flex;
+	 flex-wrap: wrap;
+	 justify-content: center; /* Center grid items */
+	 gap: 20px;
+	 margin: 20px auto; /* Center the grid container */
+}
+
+.event-cover {
+	 background-size: contain; /* Adjust if you want the image to maintain its aspect ratio */
+	 background-repeat: no-repeat;
+	 background-position: center;
+	 width: 100%; /* Full width */
+	 display: block; /* Necessary for the div to be treated as a block-level element */
+	 height: auto; /* Adjust the height as necessary */
+	padding-top: 0px;
+
+}
+
+
+.event-container {
+	 display: flex;
+	 flex-direction: column; /* Stack children elements vertically */
+	 align-items: center; /* Center children elements horizontally */
+	 width: 100%; /* Ensure container takes full width */
+	 max-width: 600px; /* Maximum width of the container */
+	 margin: auto; /* Center the container */
+}
+
+.event-detail-card {
+	 background-color: white;
+	 border: 1px solid #ddd;
+	 border-radius: 8px;
+	 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+
+	 width: 80%; /* Adjust width as necessary */
+	 max-width: 600px; /* Set a maximum width */
+	 position: relative; /* Stack on top of the image */
+	 z-index: 10; /* Ensure it's above the cover (if there was one) */
+	 box-sizing: border-box; /* Include padding in the width */
+}
+
+
+.event-details { padding: 20px;}
+.event-cover {
+	 overflow: hidden;
+}
+
+.event-cover img {
+	 width: 100%;
+	 height: auto;
+	 border-top-left-radius: 8px; /* Rounds the top-left corner */
+	 border-top-right-radius: 8px; /* Rounds the top-right corner */
+}
+
+
+.event-card {
+	 background-color: #fff;
+	 background-size: cover;
+	 background-position: center;
+	 border: 1px solid #ddd;
+	 border-radius: 8px;
+	 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	 padding: 15px;
+	 text-align: center;
+	 position: relative; /* Needed for the hover effect */
+	 overflow: hidden; /* Ensure background doesn't spill out */
+	 color: white; /* Text color */
+	 text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5); 
+	width: 250px;
+	line-height: 1.2;
+
+}
+
+.event-card-content {
+	 position: relative; /* Position text above the overlay */
+	 z-index: 2; /* Ensure text is above the overlay */
+}
+
+.event-card::before {
+	 content: '';
+	 position: absolute;
+	 top: 0; left: 0; right: 0; bottom: 0;
+	 background: rgba(0, 0, 0, 0); /* Initially transparent */
+	 transition: background-color 0.3s ease;
+	 z-index: 1; /* Below the text */
+}
+
+.event-card:hover::before {
+	 background: rgba(0, 0, 0, 0.3); /* Darken on hover */
+}
+
+/* Responsive adjustments and other styles... */
+
+
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+	 .events-grid {
+		  justify-content: space-around;
+	 }
+	 .event-card {
+		  width: 80%; /* Adjust width on smaller screens */
+		  margin-bottom: 20px;
+	 }
+}
+
+
+.event-card h3 {
+	 margin-top: 0;
+}
+
+.upcoming-events-title {
+	 text-align: center;
+	 width: 100%;
+	 margin-bottom: 0px; /* Add some space before the grid */
+	margin-top: 15px;
+}
+
+.upcoming-events-title p {text-align:center;}
+/* Add to your CSS file */
+.email-capture-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 20px; /* Add some space at the top */
+  margin-bottom: 20px; /* Add some space at the bottom */
+}
+
+.email-capture-form {
+  display: flex;
+  align-items: center;
+}
+
+.email-input {
+  flex-grow: 1; /* Allows input to fill the available space */
+  margin-right: 10px; /* Space between input and button */
+  padding: 10px;
+  font-size: 1.2em; /* Larger text inside input */
+  border: 2px solid #ccc; /* Makes the border thicker */
+  border-radius: 5px; /* Slightly rounded corners for the input */
+	width: 300px;
+}
+
+.email-submit {
+  padding: 10px 20px;
+  font-size: 1.2em;
+  background-color: #f9cd2f; /* Example button color */
+  color: #454545;
+  border: none;
+  border-radius: 5px; /* Slightly rounded corners for the button */
+  cursor: pointer;
+}
+
+/* Additional responsiveness for smaller screens */
+@media (max-width: 600px) {
+  .email-capture-form {
+	 flex-direction: column;
+  }
+
+  .email-input {
+	 margin-right: 0;
+	 margin-bottom: 10px; /* Space between input and button on small screens */
+  }
+}
+
+/* Ensure the container centers everything and has some padding */
+.upcoming-card-container {
+  display: grid;
+  gap: 20px;
+  padding: 20px;
+  margin: 0 auto;
+  max-width: 1400px;
+  text-decoration: none;
+}
+.upcoming-card-container a {text-decoration: none;}
+/* Responsive behavior */
+@media (max-width: 600px) {
+  .upcoming-card-container {
+	 grid-template-columns: 1fr;
+  }
+  .upcoming-card {
+	 margin-bottom: 20px;
+  }
+}
+
+@media (min-width: 601px) {
+  .upcoming-card-container {
+	 grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  }
+}
+
+/* Small tablets and larger: 2 cards per row */
+@media (min-width: 601px) and (max-width: 900px) {
+  .upcoming-card-container {
+	 grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Medium screens (small desktops/large tablets): 3 cards per row */
+@media (min-width: 901px) and (max-width: 1200px) {
+  .upcoming-card-container {
+	 grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Large screens: 4 cards per row */
+@media (min-width: 1201px) {
+  .upcoming-card-container {
+	 grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.upcoming-card {
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  position: relative;
+  /*padding-top: 100%; /* 1:1 Aspect Ratio */
+  background-size: cover;
+  background-position: center;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  cursor: pointer;
+	width: 300px;
+
+}
+
+.upcoming-card-content {
+  position: relative;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  color: white; /* White text color */
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7); /* Text shadow for readability */
+  text-align: center;
+  z-index: 1;
+	height: 250px;
+
+}
+
+.upcoming-card-content h2 {line-height: 1.2;}
+
+.upcoming-card::before {
+	 content: '';
+	 position: absolute;
+	 top: 0;
+	 right: 0;
+	 bottom: 0;
+	 left: 0;
+	 background: rgba(0, 0, 0, 0);
+	 transition: background 0.3s;
+}
+
+.upcoming-card:hover::before {
+	 background: rgba(0, 0, 0, 0.5);
+}
+
+
+
+.upcoming-card-link {
+ text-decoration: none; /* Removes underline from links */
+ color: inherit;
+}
+
+/* General styles, not inside any media query, will apply to all sizes */
+
+/* Account Page Styles */
+.account-container {
+	 display: flex;
+	 margin: 20px;
+}
+
+.account-sidebar {
+	 flex: 1;
+	 margin-right: 20px;
+}
+
+.account-sidebar ul {
+	 list-style-type: none;
+	 padding: 0;
+}
+
+.account-sidebar li {
+	 padding: 10px;
+	 background: #fff;
+	 border: 1px solid #ddd;
+	 margin-bottom: 8px;
+	 border-radius: 8px;
+	 text-align: center;
+}
+
+.account-sidebar li a {
+	 text-decoration: none;
+	 color: #333;
+}
+
+.account-content {
+	 flex: 3;
+	 background: #fff;
+	 border: 1px solid #ddd;
+	 border-radius: 8px;
+	 padding: 20px;
+}
+
+/* Mobile Styles */
+@media (max-width: 768px) {
+	 .account-container {
+		  flex-direction: column;
+		  margin: 10px;
+	 }
+
+	 .account-sidebar {
+		  margin-right: 0;
+		  margin-bottom: 20px;
+	 }
+
+	 .account-sidebar ul {
+		  display: flex;
+		  overflow-x: auto;
+		  padding-bottom: 10px;
+	 }
+
+	 .account-sidebar li {
+		  flex: 1;
+		  min-width: 50%; /* Ensures that buttons are usable on mobile */
+	 }
+
+	 .account-content {
+		  padding: 10px;
+	 }
+
+	 /* Adjustments for form elements for smaller screens */
+	 .form-control, .btn-primary {
+		  font-size: 16px; /* Larger font size for better readability */
+		  padding: 12px; /* Larger padding for easier interaction */
+	 }
+
+	 /* Ensure the button is full-width on smaller screens */
+	 .btn-primary {
+		  width: 100%;
+		  box-sizing: border-box; /* Includes padding in the width calculation */
+	 }
+
+	 /* Adjusts form layout for smaller screens */
+	 .profile-section-form {
+		  max-width: none; /* Allows form to expand full width */
+	 }
+}
+
+/* Use similar media queries for any other specific mobile adjustments needed */
+
+
+/* Form Styles Consistent with Provided Template */
+.form-group {
+	 margin-bottom: 15px;
+}
+
+.form-group label {
+	 display: block;
+	 margin-bottom: 5px;
+	 font-weight: bold;
+}
+
+.form-control {
+	 width: 100%;
+	 padding: 10px;
+	 border: 1px solid #ccc;
+	 border-radius: 4px;
+	 font-size: 1em;
+}
+
+.form-control:focus {
+	 border-color: #007bff;
+	 box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+}
+
+.btn-primary {
+	 color: #fff;
+	 background-color: #007bff;
+	 border-color: #007bff;
+	 padding: 10px 15px;
+	 border-radius: 4px;
+	 cursor: pointer;
+	 font-size: 1em;
+}
+
+.btn-primary:hover {
+	 background-color: #0056b3;
+	 border-color: #004085;
+}
+
+.text-danger {
+	 color: #dc3545; /* Bootstrap danger color */
+}
+
+/* Additional Styling for Profile Section Form */
+.profile-section-form {
+	 max-width: 600px; /* Adjust as needed */
+	 margin: 20px auto; /* Center the form */
+	 background-color: #fff;
+	 border: 1px solid #ddd;
+	 border-radius: 8px;
+	 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	 padding: 20px;
+}
+.events-table {
+	 width: 100%;
+	 border-collapse: collapse;
+}
+
+.events-table-header, .events-table-row {
+	 display: flex;
+	 background-color: #f9f9f9;
+	 padding: 10px;
+	 border-bottom: 1px solid #eaeaea;
+}
+
+.events-table-header {
+	 font-weight: bold;
+	 background-color: #eee;
+}
+
+.events-table-row:hover {
+	 background-color: #f4f4f4;
+}
+
+.event-name, .event-venue, .event-date, .event-action {
+	 flex: 1;
+	 padding: 8px;
+	 text-align: left;
+}
+
+.btn-edit {
+	 padding: 6px 12px;
+	 background-color: #007bff;
+	 color: white;
+	 text-decoration: none;
+	 border-radius: 4px;
+	 text-align: center;
+	 display: inline-block;
+}
+
+.btn-edit:hover {
+	 background-color: #0056b3;
+}
+
+.btn-delete {
+	 padding: 6px 12px;
+	 background-color: #007bff;
+	 color: white;
+	 text-decoration: none;
+	 border-radius: 4px;
+	 text-align: center;
+	 display: inline-block;
+}
+
+.btn-delet:hover {
+	 background-color: #0056b3;
 }

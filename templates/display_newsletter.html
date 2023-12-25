@@ -1,0 +1,16 @@
+<!-- display_newsletter.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	 <meta charset="UTF-8">
+	 <title>Newsletter Preview</title>
+	 <!-- Style as needed -->
+</head>
+<body>
+	 <h1>Newsletter Preview</h1>
+	 <div class="newsletter-content">
+		  {{ newsletter_content | safe }}
+	 </div>
+	 <a href="{{ url_for('admin') }}">Back to Admin</a>
+</body>
+</html>

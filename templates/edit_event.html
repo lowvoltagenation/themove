@@ -1,0 +1,20 @@
+<!-- templates/edit_event.html -->
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container">
+	 <h2>Edit Event</h2>
+	 <form method="POST" action="{{ url_for('edit_event', event_id=event.id) }}">
+		  <div>
+				<label for="name">Event Name</label>
+				<input type="text" id="name" name="name" value="{{ event.name }}">
+		  </div>
+		  <div>
+				<label for="description">Description</label>
+				<textarea id="description" name="description">{{ event.description }}</textarea>
+		  </div>
+		  <!-- Add other fields as necessary -->
+		  <button type="submit">Update Event</button>
+	 </form>
+</div>
+{% endblock %}

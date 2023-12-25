@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="detail-container">
+    <div class="detail-card">
+        <h2>Add Event</h2>
+            <form method="POST" action="{{ url_for('add_event') }}" enctype="multipart/form-data">
+            {{ form.hidden_tag() }}
+            <div>
+                {{ form.name.label }} {{ form.name(class="form-input") }}
+                {% if form.name.errors %}
+                    <span class="error">{{ form.name.errors[0] }}</span>
+                {% endif %}
+            </div>
+            <div>
+                {{ form.description.label }} {{ form.description(class="form-input") }}
+                {% if form.description.errors %}
+                    <span class="error">{{ form.description.errors[0] }}</span>
+                {% endif %}
+            </div>
+			  <div>
+					{{ form.time_date.label }} 
+					{{ form.time_date(class="form-input", type="datetime-local") }}
+					{% if form.time_date.errors %}
+						 <span class="error">{{ form.time_date.errors[0] }}</span>
+					{% endif %}
+			  </div>
+            <div>
+                {{ form.image.label }} {{ form.image() }}
+                {% if form.image.errors %}
+                    <span class="error">{{ form.image.errors[0] }}</span>
+                {% endif %}
+            </div>
+
+                <div>
+                    {{ form.venue_id.label }} {{ form.venue_id(class="form-input") }}
+                    <a href="{{ url_for('add_venue') }}" class="add-venue-link">Add New Venue</a>
+                    <!-- Add other fields and buttons -->
+                </div>
+            <div>
+                {{ form.submit(class="form-submit") }}
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

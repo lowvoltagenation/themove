@@ -9,19 +9,31 @@
 <body>
 	<header>
 			<div class="container">
-					<h1><a href="{{ url_for('home') }}">The Move Nashville</a></h1>
+					<!-- <h1><a href="{{ url_for('home') }}">The Move Nashville</a></h1> -->
+					<a href="{{ url_for('home') }}"><img src="{{ url_for('static', filename='images/the-move-logo-invert.png') }}"></a></img> 
 					<nav>
 							<ul>
 									<li><a href="{{ url_for('home') }}">The Move</a></li>
 									<li><a href="{{ url_for('venue_list') }}">Venues</a></li>
-									<!-- <li><a href="{{ url_for('admin') }}">Admin</a></li> -->
-									<li><a href="{{ url_for('login') }}">Login</a></li>
 									<li><a href="{{ url_for('add_event') }}">Add Event</a></li>
+								{% if current_user.is_authenticated %}
+									 <li><a href="{{ url_for('account_profile') }}">My Account</a></li>
+								{% else %}
+									 <li><a href="{{ url_for('login') }}">Login</a></li>
+								{% endif %}
 							</ul>
+						
 					</nav>
+
 			</div>
+
 	</header>
     <main class="container">
+			{% for message in get_flashed_messages() %}
+			<div class="flash-message">
+				 {{ message }}
+			</div>
+			{% endfor %}
         {% block content %}
         {% endblock %}
     </main>

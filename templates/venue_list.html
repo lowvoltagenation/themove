@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container">
+	 <!-- <h1>Venues</h1> -->
+	<div class="card-container">
+		 {% for venue in venues %}
+		 <a href="{{ url_for('venue_detail', venue_slug=venue.slug) }}" class="venue-card-link">
+			  <div class="card venue-card" style="background-image: url('{{ url_for('static', filename='images/venues/' ~ venue.slug ~ '/' ~ venue.image_path) }}')">
+					<h2>{{ venue.name }}</h2>
+			  </div>
+		 </a>
+		 {% endfor %}
+	</div>
+</div>
+{% endblock %}

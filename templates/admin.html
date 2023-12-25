@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+
+{% block title %}
+Admin Dashboard - The Move
+{% endblock %}
+
+{% block content %}
+<div class="container">
+	 <h1>Admin Dashboard</h1>
+	<!-- Inside admin.html -->
+	<form action="{{ url_for('generate_newsletter') }}" method="post">
+		 <input type="submit" value="Generate Newsletter" />
+	</form>
+
+	 <section>
+		  <h2>Users</h2>
+		  <table>
+				<thead>
+					 <tr>
+						  <th>ID</th>
+						  <th>Name</th>
+						  <th>Email</th>
+						  <th>Actions</th>
+					 </tr>
+				</thead>
+				<tbody>
+					 {% for user in users %}
+					 <tr>
+						  <td>{{ user.id }}</td>
+						  <td>{{ user.name }}</td>
+						  <td>{{ user.email }}</td>
+						  <td>
+								<a href="{{ url_for('edit_user', user_id=user.id) }}">Edit</a> |
+								<a href="{{ url_for('delete_user', user_id=user.id) }}">Delete</a>
+						  </td>
+					 </tr>
+					 {% endfor %}
+				</tbody>
+		  </table>
+	 </section>
+
+	 <section>
+		  <h2>Events</h2>
+		  <table>
+				<thead>
+					 <tr>
+						  <th>ID</th>
+						  <th>Name</th>
+						  <th>Date</th>
+						  <th>Actions</th>
+					 </tr>
+				</thead>
+				<tbody>
+					 {% for event in events %}
+					 <tr>
+						  <td>{{ event.id }}</td>
+						  <td>{{ event.name }}</td>
+						  <td>{{ event.time_date }}</td>
+						  <td>
+								<a href="{{ url_for('edit_event', event_id=event.id) }}">Edit</a> |
+								<a href="{{ url_for('delete_event', event_id=event.id) }}">Delete</a>
+						  </td>
+					 </tr>
+					 {% endfor %}
+				</tbody>
+		  </table>
+	 </section>
+
+	 <section>
+		  <h2>Venues</h2>
+		  <table>
+				<thead>
+					 <tr>
+						  <th>ID</th>
+						  <th>Name</th>
+						  <th>City</th>
+						  <th>Actions</th>
+					 </tr>
+				</thead>
+				<tbody>
+					 {% for venue in venues %}
+					 <tr>
+						  <td>{{ venue.id }}</td>
+						  <td>{{ venue.name }}</td>
+						  <td>{{ venue.city }}</td>
+						  <td>
+								<a href="{{ url_for('edit_venue', venue_id=venue.id) }}">Edit</a> |
+								<a href="{{ url_for('delete_venue', venue_id=venue.id) }}">Delete</a>
+						  </td>
+					 </tr>
+					 {% endfor %}
+				</tbody>
+		  </table>
+	 </section>
+
+</div>
+{% endblock %}

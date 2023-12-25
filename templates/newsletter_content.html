@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Newsletter</title>
+    <style>
+        body {
+            background-color: #f0f0f0;
+            color: #333;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .event-block, .sponsors-block {
+            background-color: #e0e0e0;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .event-image {
+            max-width: 100%;
+            height: auto;
+            border: 0;
+        }
+        .event-title {
+            color: #000000;
+            font-size: 24px;
+            margin-top: 10px;
+        }
+        .event-description {
+            color: #666666;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        .upcoming-events h4 {margin-bottom: 0px;}
+        .upcoming-events p {margin-top: 0px;}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header with logo -->
+        <div class="header">
+            <img src="https://themove.admin270.repl.co/static/images/the-move-logo.png" alt="Logo" style="max-width: 450px;">
+        </div>
+
+        <!-- Featured Event -->
+        {% if themove_event %}
+        {% set themove_event_url = base_url ~ '/events/' ~ themove_event.slug %}
+        {% set themove_event_image_url = base_url ~ '/static/images/venues/' ~ venue_slug ~ '/' ~ themove_event.image_path if themove_event.image_path else base_url ~ '/static/images/default_image.jpg' %}
+
+        <div class="event-block">
+            <a href="{{ themove_event_url }}">
+                <img src="{{ themove_event_image_url }}" alt="{{ themove_event.name }}" class="event-image">
+            </a>
+            <a href="{{ themove_event_url }}">
+                <h2 class="event-title">{{ themove_event.name }}</h2>
+            </a>
+            {% if venue %}
+                <h3>{{ venue.name }}</h3>
+            {% endif %}
+            <p class="event-description">{{ themove_event.description }}</p>
+        </div>
+        {% endif %}
+
+
+        <div class="upcoming-events">
+            <h3>Upcoming Events</h3>
+            {% for event in upcoming_events %}
+            <div class="event">
+                <h4><a href="{{ base_url }}/events/{{ event.slug }}">{{ event.name }}</a></h4>
+                <p>{{ event.time_date.strftime('%A, %B %d, %Y %I:%M %p') }}</p>
+                <!-- Add more event details as needed -->
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Sponsors -->
+        <div class="sponsors-block">
+            <h3>Our Sponsors</h3>
+            <!-- Add sponsor logos or names here -->
+            {% for sponsor in sponsors %}
+            <p>{{ sponsor.name }}</p>
+            {% endfor %}
+        </div>
+    </div>
+</body>
+</html>

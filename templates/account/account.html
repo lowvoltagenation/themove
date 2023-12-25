@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="account-container">
+    <aside class="account-sidebar">
+        <ul>
+            <li class="{{ 'active' if section == 'profile' else '' }}">
+                <a href="{{ url_for('account_profile', section='profile') }}">Profile</a>
+            </li>
+            <li class="{{ 'active' if section == 'my-events' else '' }}">
+                <a href="{{ url_for('account_my_events') }}">My Events</a>
+            </li>
+
+            <li class="{{ 'active' if section == 'change-password' else '' }}">
+                <a href="{{ url_for('change_password', section='change-password') }}">Change Password</a>
+            </li>
+
+            <li><a href="{{ url_for('logout') }}">Logout</a></li>
+        </ul>
+    </aside>
+    <!-- In account.html -->
+    {% block account_content %}
+
+
+    <section class="account-content">
+        {% if section == 'profile' %}
+            {% include 'account/profile_section.html' %}
+        {% elif section == 'my-events' %}
+            {% include 'account/my_events.html' %}
+        {% elif section == 'edit-event' %}
+            {% with event=event %}
+                {% include 'account/edit-event.html' %}
+            {% endwith %}
+        {% elif section == 'change-password' %}
+            {% include 'account/change_password.html' %}
+        {% endif %}
+    </section>
+    {% endblock %}
+</div>
+{% endblock %}
+
+

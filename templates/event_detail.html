@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<!-- Conditional Event Cover Image -->
+
+
+<!-- Event Details Card -->
+<div class="event-container">
+    <div class="event-detail-card">
+		 {% if event.image_path %}
+		 <div class="event-cover">
+			  <img src="{{ url_for('static', filename='images/venues/' ~ venue_slug ~ '/' ~ event.image_path) }}" alt="{{ event.name }}" style="width:100%; height:auto;">
+		 </div>
+		 {% endif %}
+		 <div class="event-details">
+        <h2>{{ event.name }}</h2>
+        <p><b>Date:</b> {{ event.time_date.strftime('%A, %B %d, %Y %I:%M %p') }}</p>
+        <p>{{ event.description }}</p>
+			 <p><b>Location:</b> <a href="{{ url_for('venue_detail', venue_slug=venue.slug) }}">{{ venue.name }}</a></p>
+        <!-- Add other event information -->
+		 </div>
+    </div>
+</div>
+{% endblock %}

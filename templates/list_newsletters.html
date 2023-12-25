@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	 <meta charset="UTF-8">
+	 <title>Newsletters</title>
+	 <!-- Add additional head elements here -->
+</head>
+<body>
+	 <h1>Newsletter Archive</h1>
+	 <ul>
+		  {% for newsletter in newsletters %}
+				<li><a href="{{ url_for('view_newsletter', newsletter_id=newsletter.id) }}">{{ newsletter.subject }}</a></li>
+		  {% else %}
+				<li>No newsletters available.</li>
+		  {% endfor %}
+	 </ul>
+</body>
+</html>

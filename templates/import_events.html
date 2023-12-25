@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<form method="POST" action="{{ url_for('import_events') }}">
+	 {% for event in events %}
+	 <div>
+		  <input type="checkbox" name="event_checkbox" value="{{ event['id'] }}">
+		  <label>
+				{{ event['name']['text'] }} - 
+				{{ event['start']['local'] }} - 
+				{{ event['venue']['name'] if event.get('venue') else 'No Venue' }}
+		  </label>
+	 </div>
+	 {% endfor %}
+	 <button type="submit">Import Selected Events</button>
+</form>
+{% endblock %}

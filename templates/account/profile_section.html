@@ -1,0 +1,26 @@
+
+<div class="container">
+    <h2>Update Profile</h2>
+    <form action="{{ url_for('account_profile') }}" method="post">
+        {{ profile_form.hidden_tag() }}
+
+        <div class="form-group">
+            <label for="name">Name</label>
+            <input type="text" class="form-control" id="name" name="name" value="{{ profile_form.name.data or '' }}" required>
+            {% for error in profile_form.name.errors %}
+                <span class="text-danger">{{ error }}</span>
+            {% endfor %}
+        </div>
+
+        <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" class="form-control" id="email" name="email" value="{{ profile_form.email.data or '' }}" required>
+            {% for error in profile_form.email.errors %}
+                <span class="text-danger">{{ error }}</span>
+            {% endfor %}
+        </div>
+
+        <button type="submit" class="btn btn-primary">Update Profile</button>
+    </form>
+</div>
+
