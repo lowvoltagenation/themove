@@ -1,5 +1,5 @@
 from flask_wtf import FlaskForm
-from wtforms import StringField, TextAreaField, SubmitField, DateTimeField, SelectField, PasswordField
+from wtforms import StringField, TextAreaField, SubmitField, DateTimeField, SelectField, PasswordField, validators
 from wtforms.validators import DataRequired, Email, Length, EqualTo
 from models import Venue
 from flask_wtf.file import FileField, FileAllowed
@@ -60,12 +60,15 @@ class ChangePasswordForm(FlaskForm):
 
 class VenueForm(FlaskForm):
 	 name = StringField('Name', validators=[DataRequired()])
-	 address1 = StringField('Address 1', validators=[DataRequired()])
-	 address2 = StringField('Address 2')
+	 address_1 = StringField('Address 1', validators=[DataRequired()])
+	 address_2 = StringField('Address 2')
 	 city = StringField('City', validators=[DataRequired()])
 	 state = StringField('State', validators=[DataRequired()])
-	 postal = StringField('Postal Code', validators=[DataRequired()])
+	 zip = StringField('Postal Code', validators=[DataRequired()])
+	 phone = StringField('Phone Number', validators=[validators.Optional()])
 	 website = StringField('Website')
-	 instagram = StringField('Instagram')
+	 instagram_handle = StringField('Instagram')
 	 image = FileField('Image', validators=[FileAllowed(['jpg', 'png', 'jpeg'], 'Images only!')])
+	 description = TextAreaField('Description')
 	 submit = SubmitField('Add Venue')
+	

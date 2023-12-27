@@ -1,0 +1,98 @@
+{% extends 'account/account.html' %}
+
+{% block account_content %}
+<div class="account-content">
+    <h2>Edit Venue</h2>
+    <form action="{{ url_for('edit_venue', venue_id=venue.id) }}" method="post" enctype="multipart/form-data">
+        {{ form.hidden_tag() }}
+
+        <div class="form-group">
+            <label for="name">Venue Name</label>
+            {{ form.name(class="form-control", id="name") }}
+            {% for error in form.name.errors %}
+                <span class="text-danger">{{ error }}</span>
+            {% endfor %}
+        </div>
+
+        <div class="form-group">
+            <label for="address_1">Address 1</label>
+            {{ form.address_1(class="form-control", id="address_1") }}
+            {% for error in form.address_1.errors %}
+                <span class="text-danger">{{ error }}</span>
+            {% endfor %}
+        </div>
+
+        <div class="form-group">
+            <label for="address_2">Address 2</label>
+            {{ form.address_2(class="form-control", id="address_2") }}
+            {% for error in form.address_2.errors %}
+                <span class="text-danger">{{ error }}</span>
+            {% endfor %}
+        </div>
+
+        <div class="form-group">
+            <label for="city">City</label>
+            {{ form.city(class="form-control", id="city") }}
+            {% for error in form.city.errors %}
+                <span class="text-danger">{{ error }}</span>
+            {% endfor %}
+        </div>
+
+        <div class="form-group">
+            <label for="state">State</label>
+            {{ form.state(class="form-control", id="state") }}
+            {% for error in form.state.errors %}
+                <span class="text-danger">{{ error }}</span>
+            {% endfor %}
+        </div>
+
+        <div class="form-group">
+            <label for="zip">Zip Code</label>
+            {{ form.zip(class="form-control", id="zip") }}
+            {% for error in form.zip.errors %}
+                <span class="text-danger">{{ error }}</span>
+            {% endfor %}
+        </div>
+
+        <div class="form-group">
+            <label for="phone">Phone Number</label>
+            {{ form.phone(class="form-control", id="phone") }}
+            {% for error in form.phone.errors %}
+                <span class="text-danger">{{ error }}</span>
+            {% endfor %}
+        </div>
+
+        <div class="form-group">
+            <label for="website">Website</label>
+            {{ form.website(class="form-control", id="website") }}
+            {% for error in form.website.errors %}
+                <span class="text-danger">{{ error }}</span>
+            {% endfor %}
+        </div>
+
+        <div class="form-group">
+            <label for="instagram_handle">Instagram Handle</label>
+            {{ form.instagram_handle(class="form-control", id="instagram_handle") }}
+            {% for error in form.instagram_handle.errors %}
+                <span class="text-danger">{{ error }}</span>
+            {% endfor %}
+        </div>
+        <div class="form-group">
+            <label for="description">Description</label>
+            {{ form.description(class="form-control", id="description") }}
+            {% for error in form.description.errors %}
+                <span class="text-danger">{{ error }}</span>
+            {% endfor %}
+        </div>
+        <div class="form-group">
+            <label for="image">Venue Image</label>
+            {{ form.image(class="form-control-file", id="image") }}
+            {% if venue.image_path %}
+                <img src="{{ venue.image_path }}" alt="Venue Image" height="100">
+            {% endif %}
+        </div>
+
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+    </form>
+</div>
+{% endblock %}

@@ -34,6 +34,10 @@ class Venue(db.Model):
      phone = db.Column(db.String(20))  # Adjust the length as needed
      address_1 = db.Column(db.String(255))  # Adjust the length as needed
      address_2 = db.Column(db.String(255))  # Adjust the length as needed
+     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+     user = db.relationship('User', backref='venue')
+     description = db.Column(db.Text, nullable=True)  # Add this line
+
      def generate_slug(self):
          self.slug = slugify(self.name)
 
@@ -67,7 +71,8 @@ class FeaturedEvent(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     event_id = db.Column(db.Integer, db.ForeignKey('event.id'))
     is_themove = db.Column(db.Boolean, default=False, nullable=False)
-    newsletter_created = db.Column(db.Boolean, default=False)  # Add this line
+    newsletter_created = db.Column(db.Boolean, default=False)
+    event = db.relationship('Event', backref='featured_events') # Add this line
 
     # ... other fields ...
 

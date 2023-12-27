@@ -1,5 +1,12 @@
 {% extends 'base.html' %}
-
+{% block title %}{{ venue.name }} | The Move{% endblock %}
+<!-- {% block description %}{{ venue.description | truncate(160) }}{% endblock %} -->
+{% block og_title %}{{ venue.name }} | The Move{% endblock %}
+<!-- {% block og_description %}{{ venue.description | truncate(160) }}{% endblock %} -->
+{% block og_image %}{{ venue.image_path }}{% endblock %}
+{% block twitter_title %}{{ venue.name }} | The Move{% endblock %}
+<!-- {% block twitter_description %}{{ venue.description | truncate(160) }}{% endblock %} -->
+{% block twitter_image %}{{ venue.image_path }}{% endblock %}
 {% block content %}
 <!-- Venue Details Card -->
 <div class="event-container">
@@ -7,13 +14,19 @@
         <!-- Conditional Venue Cover Image -->
         {% if venue.image_path %}
         <div class="venue-image-container">
-            <img src="{{ url_for('static', filename='images/venues/' ~ venue_slug ~ '/' ~ venue.image_path) }}" alt="{{ venue.name }}">
+            <img src="{{ venue.image_path }}" alt="{{ venue.name }}">
         </div>
         {% endif %}
         <div class="event-details">
             <h2>{{ venue.name }}</h2>
             <!-- Venue information -->
-            <p>{{ venue.description }}</p>
+            <p>
+              {% if venue.description %}
+                {{ venue.description | truncate(160) }}
+              {% else %}
+                Default description or some placeholder text.
+              {% endif %}
+         </p>
             <p><strong>Address:</strong> {{ venue.address_1 }}{% if venue.address_2 %} {{ venue.address_2 }}{% endif %}</p>
             <p><strong>City:</strong> {{ venue.city }}</p>
             <p><strong>State:</strong> {{ venue.state }}</p>
@@ -33,7 +46,7 @@
 <div class="upcoming-card-container">
     {% for event in upcoming_events %}
     <a href="{{ url_for('event_detail', slug=event.slug) }}">
-        <div class="upcoming-card" style="background-image: url('{{ url_for('static', filename='images/venues/' ~ venue_slug ~ '/' ~ event.image_path) }}'); background-size: cover; background-position: center; color: white;">
+        <div class="upcoming-card" style="background-image: url('{{ event.image_path }}'); background-size: cover; background-position: center; color: white;">
              <div class="upcoming-card-content">
                 <h2>{{ event.name }}</h2>
                 <p>{{ event.time_date.strftime('%Y-%m-%d %H:%M') }}</p>

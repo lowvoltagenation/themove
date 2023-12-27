@@ -50,13 +50,13 @@
     <div class="container">
         <!-- Header with logo -->
         <div class="header">
-            <img src="https://themove.admin270.repl.co/static/images/the-move-logo.png" alt="Logo" style="max-width: 450px;">
+            <img src="https://themovenashville.com/static/images/the-move-logo.png" alt="Logo" style="max-width: 450px;">
         </div>
 
         <!-- Featured Event -->
         {% if themove_event %}
         {% set themove_event_url = base_url ~ '/events/' ~ themove_event.slug %}
-        {% set themove_event_image_url = base_url ~ '/static/images/venues/' ~ venue_slug ~ '/' ~ themove_event.image_path if themove_event.image_path else base_url ~ '/static/images/default_image.jpg' %}
+        {% set themove_event_image_url = themove_event.image_path if themove_event.image_path else base_url ~ '/static/images/default_image.jpg' %}
 
         <div class="event-block">
             <a href="{{ themove_event_url }}">

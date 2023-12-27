@@ -1,4 +1,12 @@
 {% extends 'base.html' %}
+{% block title %}{{ event.name }} | The Move{% endblock %}
+{% block description %}{{ event.description | truncate(160) }}{% endblock %}
+{% block og_title %}{{ event.name }} | The Move{% endblock %}
+{% block og_description %}{{ event.description | truncate(160) }}{% endblock %}
+{% block og_image %}{{ event.image_path }}{% endblock %}
+{% block twitter_title %}{{ event.name }} | The Move{% endblock %}
+{% block twitter_description %}{{ event.description | truncate(160) }}{% endblock %}
+{% block twitter_image %}{{ event.image_path }}{% endblock %}
 
 {% block content %}
 <!-- Conditional Event Cover Image -->
@@ -9,7 +17,7 @@
     <div class="event-detail-card">
 		 {% if event.image_path %}
 		 <div class="event-cover">
-			  <img src="{{ url_for('static', filename='images/venues/' ~ venue_slug ~ '/' ~ event.image_path) }}" alt="{{ event.name }}" style="width:100%; height:auto;">
+			  <img src="{{ event.image_path }}" alt="{{ event.name }}" style="width:100%; height:auto;">
 		 </div>
 		 {% endif %}
 		 <div class="event-details">

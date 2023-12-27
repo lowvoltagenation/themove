@@ -3,8 +3,13 @@
 {% block account_content %}
 <div class="account-content">
     <h2>Edit Event</h2>
+
     <form action="{{ url_for('edit_event', event_id=event.id) }}" method="post" enctype="multipart/form-data">
         {{ form.hidden_tag() }}
+        {% if current_user.role == 'admin' %}
+                <label for="is_themove">The Move</label>
+                <input type="checkbox" name="is_themove" id="is_themove" {{ 'checked' if is_themove else '' }}>
+        {% endif %}
 
         <div class="form-group">
             <label for="name">Event Name</label>
@@ -12,7 +17,9 @@
             {% for error in form.name.errors %}
                 <span class="text-danger">{{ error }}</span>
             {% endfor %}
+            
         </div>
+
 
         <div class="form-group">
             <label for="description">Event Description</label>
@@ -42,7 +49,7 @@
             <label for="image">Event Image</label>
             {{ form.image(class="form-control-file", id="image") }}
             {% if event.image_path %}
-                <img src="{{ url_for('static', filename='images/venues/' ~ venue.slug ~ '/' ~ event.image_path if event.image_path else 'images/default_event_image.jpg') }}" alt="Event Image" height="100">
+                <img src="{{ event.image_path if event.image_path else 'images/default_event_image.jpg' }}" alt="Event Image" height="100">
             {% endif %}
         </div>
 

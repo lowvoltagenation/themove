@@ -1,0 +1,2079 @@
+----- Contents of main.py -----
+import os
+from datetime import datetime
+
+from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+from apscheduler.schedulers.background import BackgroundScheduler
+from flask import Flask, current_app, make_response, flash, redirect, render_template, request, url_for
+from flask_apscheduler import APScheduler
+from flask_login import (
+     LoginManager,
+     current_user,
+     login_required,
+     login_user,
+     logout_user,
+)
+from flask_migrate import Migrate
+from PIL import Image
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
+from slugify import slugify
+from sqlalchemy.exc import SQLAlchemyError
+
+from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.utils import secure_filename
+
+from extensions import db
+from forms import EmailCaptureForm, EventForm, LoginForm, RegistrationForm, ProfileForm, ChangePasswordForm, VenueForm
+from models import (
+     Email,
+     Event,
+     FeaturedEvent,
+     FeaturedImage,
+     Newsletter,
+     Sponsor,
+     User,
+     Venue,
+)
+
+import boto3
+
+jobstores = {
+    'default': SQLAlchemyJobStore(url=os.environ.get('DATABASE_URL').replace("postgres://", "postgresql://", 1))
+}
+
+AWS_ACCESS_KEY_ID = os.environ.get('AWS_KEY')
+AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET')
+AWS_S3_BUCKET_NAME = os.environ.get('AWS_BUCKET')
+
+s3_client = boto3.client(
+    's3',
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    region_name='us-east-1'
+)
+
+
+
+def create_app():
+     app = Flask(__name__)
+     
+     app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL').replace("postgres://", "postgresql://", 1)
+     app.secret_key = 'your_secret_key'
+     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+     app.config['SQLALCHEMY_POOL_RECYCLE'] = 300
+     app.config['SQLALCHEMY_POOL_TIMEOUT'] = 30
+     app.config['SQLALCHEMY_POOL_SIZE'] = 10
+     app.config['SQLALCHEMY_MAX_OVERFLOW'] = 5
+
+     db.init_app(app)
+     
+     login_manager = LoginManager()
+     login_manager.init_app(app)
+     login_manager.login_view = 'login'
+
+     
+     @login_manager.user_loader
+     def load_user(user_id):
+        return User.query.get(int(user_id))
+     
+     migrate = Migrate(app, db)
+
+     def is_admin(user):
+         return user.is_authenticated and user.role == 'admin'
+
+     def get_user_events(user_id):
+         """
+         Retrieves events associated with the given user.
+         :param user_id: ID of the user whose events are to be retrieved.
+         :return: List of event objects associated with the user.
+         """
+         events = Event.query.filter_by(user_id=user_id).all()
+         return events
+
+     def get_user_profile(user_id):
+         """
+         Retrieves profile information for the given user.
+         :param user_id: ID of the user whose profile information is to be retrieved.
+         :return: A user object containing the profile information.
+         """
+         user_profile = User.query.get(user_id)
+         return user_profile
+
+
+
+     def process_image(file_path, output_width=600, quality=85):
+         """
+         Resize an image based on a fixed width, maintaining aspect ratio.
+         :param file_path: The path to the image.
+         :param output_width: Desired width of the output image.
+         :param quality: Quality of the output image (1-100).
+         """
+         with Image.open(file_path) as img:
+             # Calculate new height to maintain aspect ratio
+             aspect_ratio = img.height / img.width
+             new_height = int(output_width * aspect_ratio)
+
+             # Resize the image
+             img = img.resize((output_width, new_height), Image.Resampling.LANCZOS)
+
+             # Save the image with reduced quality
+             img.save(file_path, optimize=True, quality=quality)
+
+     
+     def send_newsletter_email(newsletter):
+         recipients = Email.query.with_entities(Email.email).all()  # Query all email addresses
+         emails = [email[0] for email in recipients]  # Extract email addresses from query result
+    
+         # Define the sender with a name and email address
+    
+         for recipient in emails:
+             message = Mail(
+                 from_email=('events@themovenashville.com', 'The Move Nashville'),
+                 to_emails=recipient,
+                 subject=newsletter.subject,
+                 html_content=newsletter.html_content)
+             try:
+                 sg = SendGridAPIClient(os.environ.get('SENDGRID_API_KEY'))
+                 response = sg.send(message)
+                 print(f"Sent to {recipient}: Status {response.status_code}")
+             except Exception as e:
+                 print(f"Error sending to {recipient}: {str(e)}")
+    
+         print("All emails sent.")
+    
+     def create_newsletter_content(base_url="https://themovenashville.com"):
+         # Query to get the nearest future 'themove_event' that hasn't had a newsletter created
+         current_date = datetime.utcnow()
+         featured_event_record = FeaturedEvent.query.join(Event, FeaturedEvent.event_id == Event.id)\
+                                                     .filter(Event.time_date >= current_date, FeaturedEvent.newsletter_created == False)\
+                                                     .order_by(Event.time_date)\
+                                                     .first()
+    
+         themove_event = None
+         venue_slug = 'default'
+         event_name = None
+         event_date = None
+    
+         if featured_event_record:
+             themove_event = Event.query.get(featured_event_record.event_id)
+             if themove_event:
+                 event_name = themove_event.name
+                 event_date = themove_event.time_date.strftime('%Y-%m-%d')
+                 if themove_event.venue:
+                     venue_slug = themove_event.venue.slug
+    
+         # Query for upcoming events, sponsors, and featured images
+         upcoming_events = Event.query.filter(Event.time_date >= datetime.utcnow()).order_by(Event.time_date).all()
+         sponsors = Sponsor.query.all()
+         featured_images = FeaturedImage.query.all()
+    
+         # Render the template
+         html_content = render_template('newsletter_content.html',
+                                        base_url=base_url,
+                                        themove_event=themove_event,
+                                        venue_slug=venue_slug,
+                                        upcoming_events=upcoming_events,
+                                        sponsors=sponsors,
+                                        featured_images=featured_images)
+    
+         return html_content, event_name, event_date
+     
+     def store_weekly_newsletter(app):
+         with app.app_context():
+             # Get the nearest future 'themove_event' that hasn't had a newsletter created
+             current_date = datetime.utcnow()
+             featured_event = FeaturedEvent.query.join(Event, FeaturedEvent.event_id == Event.id)\
+                                                 .filter(Event.time_date >= current_date, FeaturedEvent.newsletter_created == False)\
+                                                 .order_by(Event.time_date)\
+                                                 .first()
+
+             if featured_event:
+                 html_content, event_name, event_date = create_newsletter_content()
+
+                 # Format the subject line
+                 if event_name and event_date:
+                     formatted_event_date = datetime.strptime(event_date, '%Y-%m-%d').strftime('%m/%d/%Y')
+                     subject = f"The Move: {event_name} {formatted_event_date}"
+                 else:
+                     subject = "Weekly Newsletter - {}".format(datetime.utcnow().strftime('%Y-%m-%d'))
+
+                 new_newsletter = Newsletter(subject=subject, html_content=html_content)
+                 db.session.add(new_newsletter)
+                 try:
+                     db.session.commit()
+                     # Update featured_event's newsletter_created flag
+                     featured_event.newsletter_created = True
+                     db.session.commit()
+                 except SQLAlchemyError as e:
+                     db.session.rollback()
+                     print("Failed to add newsletter to database.", e)
+
+
+     def send_daily_newsletter(app):
+         with app.app_context():
+             newsletter = Newsletter.query.filter_by(sent=False).order_by(Newsletter.created_at.desc()).first()
+             if newsletter:
+                 send_newsletter_email(newsletter)
+                 newsletter.sent = True  # Mark as sent
+                 db.session.commit()
+                 
+     @app.route('/')
+     def home():
+         events = db.session.query(Event, Venue).join(Venue, Event.venue_id == Venue.id).all()
+         form = EmailCaptureForm()
+         return render_template('home.html', events=events, form=form)
+
+     @app.route('/events/<slug>')
+     def event_detail(slug):
+         event = Event.query.filter_by(slug=slug).first_or_404()
+         venue = Venue.query.get(event.venue_id)
+         venue_slug = event.venue.slug  # Assuming that 'venue' is a backref from the Event model to a Venue model
+         return render_template('event_detail.html', event=event, venue_slug=venue_slug, venue=venue)
+    
+     @app.route('/venues')
+     def venue_list():
+         venues = Venue.query.all()
+         return render_template('venue_list.html', venues=venues)
+     
+     @app.route('/admin')
+     @login_required
+     def admin():
+         # Ensure the user has the 'admin' role
+         if current_user.role != 'admin':
+             flash('You must be an admin to access this page.', 'danger')
+             return redirect(url_for('home'))
+
+         # Query to get all users, events, and venues for the admin dashboard
+         users = User.query.all()
+         events = Event.query.all()
+         venues = Venue.query.all()
+
+         return render_template('admin.html', users=users, events=events, venues=venues)
+     
+     @app.route('/register', methods=['GET', 'POST'])
+     def register():
+         email = request.args.get('email', None)
+         form = RegistrationForm(email=email)
+         if form.validate_on_submit():
+             existing_user = User.query.filter_by(email=form.email.data).first()
+             if existing_user:
+                 flash('Email already registered. Please login or use a different email.', 'danger')
+                 return redirect(url_for('register'))
+     
+             hashed_password = generate_password_hash(form.password.data)
+             new_user = User(name=form.name.data, email=form.email.data, password_hash=hashed_password)
+             db.session.add(new_user)
+             db.session.commit()
+     
+             flash('Your account has been created! You are now able to log in.', 'success')
+             return redirect(url_for('login'))
+         return render_template('register.html', title='Register', form=form)
+     
+     @app.route('/login', methods=['GET', 'POST'])
+     def login():
+         form = LoginForm()
+         if form.validate_on_submit():
+             user = User.query.filter_by(email=form.email.data).first()
+             if user and check_password_hash(user.password_hash, form.password.data):
+                 login_user(user)
+
+                 next_page = request.args.get('next')
+                 # Check if next_page is relative and not an absolute URL
+                 if not next_page or not next_page.startswith('/'):
+                     next_page = url_for('home')
+                 return redirect(next_page)
+             else:
+                 flash('Login Unsuccessful. Please check email and password', 'danger')
+
+         return render_template('login.html', form=form)
+    
+
+     @app.route('/logout')
+     def logout():
+        logout_user()
+        return redirect(url_for('home'))
+     
+     @app.route('/dashboard')
+     @login_required
+     def dashboard():
+        return render_template('dashboard.html')
+
+     @app.route('/edit-user/<int:user_id>', methods=['GET', 'POST'])
+     @login_required  # Optional: if you want to restrict access
+     def edit_user(user_id):
+        user = User.query.get_or_404(user_id)
+
+        if request.method == 'POST':
+            user.name = request.form['name']
+            user.email = request.form['email']
+            # Add other fields as necessary
+            db.session.commit()
+            flash('User updated successfully.', 'success')
+            return redirect(url_for('admin'))
+
+        return render_template('edit_user.html', user=user)
+
+     @app.route('/delete-user/<int:user_id>', methods=['POST'])
+     @login_required  # Optional: if you want to restrict access
+     def delete_user(user_id):
+         user = User.query.get_or_404(user_id)
+         db.session.delete(user)
+         db.session.commit()
+         flash('User deleted successfully.', 'success')
+         return redirect(url_for('admin'))
+
+
+     @app.route('/add-event', methods=['GET', 'POST'])
+     @login_required
+     def add_event():
+         form = EventForm()
+         if form.validate_on_submit():
+             venue = Venue.query.get(form.venue_id.data)
+             venue_slug = slugify(venue.name)
+             event_slug = slugify(form.name.data)
+
+             if form.image.data:
+                 file = form.image.data
+                 filename = secure_filename(file.filename)
+                 s3_filepath = f'images/venues/{venue_slug}/{filename}'
+
+                 # Ensure the temp directory exists
+                 temp_dir = os.path.join(current_app.root_path, 'static/temp')
+                 os.makedirs(temp_dir, exist_ok=True)
+
+                 temp_path = os.path.join(temp_dir, filename)
+                 file.save(temp_path)
+
+                 # Optimize the image
+                 process_image(temp_path, output_width=600, quality=85)
+
+                 # Upload the optimized image to S3
+                 with open(temp_path, 'rb') as optimized_img:
+                     s3_client.upload_fileobj(
+                         optimized_img,
+                         AWS_S3_BUCKET_NAME,
+                         s3_filepath
+                
+                     )
+
+                 image_path = f'https://{AWS_S3_BUCKET_NAME}.s3.amazonaws.com/{s3_filepath}'
+
+                 # Remove the temporary file
+                 os.remove(temp_path)
+             else:
+                 image_path = None
+
+             new_event = Event(
+                 name=form.name.data,
+                 slug=event_slug,
+                 description=form.description.data,
+                 time_date=form.time_date.data,
+                 venue_id=form.venue_id.data,
+                 user_id=current_user.id,
+                 image_path=image_path
+             )
+             new_event.generate_slug()
+             db.session.add(new_event)
+             try:
+                 db.session.commit()
+                 flash('Event has been created successfully!', 'success')
+             except SQLAlchemyError as e:
+                 db.session.rollback()
+                 flash('An error occurred. Event could not be added.', 'danger')
+                 print(e)
+
+             return redirect(url_for('home'))
+
+         return render_template('add_event.html', form=form)
+
+     @app.route('/venues/<string:venue_slug>')
+     def venue_detail(venue_slug):
+         venue = Venue.query.filter_by(slug=venue_slug).first_or_404()
+         upcoming_events = Event.query.filter(Event.venue_id == venue.id, Event.time_date > datetime.utcnow()).order_by(Event.time_date).all()
+         print("Upcoming Events:", upcoming_events)  # Debugging print statement
+         return render_template('venue_detail.html', venue=venue, venue_slug=venue_slug, upcoming_events=upcoming_events)
+
+ 
+
+     @app.route('/delete-venue/<int:venue_id>', methods=['POST'])
+     @login_required
+     def delete_venue(venue_id):
+         venue = Venue.query.get_or_404(venue_id)
+         db.session.delete(venue)
+         db.session.commit()
+         flash('Venue deleted successfully.', 'success')
+         return redirect(url_for('admin'))
+
+
+
+     @app.route('/capture-email', methods=['POST'])
+     def capture_email():
+         form = EmailCaptureForm()
+         if form.validate_on_submit():
+             email = Email(email=form.email.data)
+             db.session.add(email)
+             try:
+                 db.session.commit()
+                 flash('You have been successfully added to the list!', 'success')
+             except SQLAlchemyError as e:
+                 db.session.rollback()
+                 flash('An error occurred. Email not added.', 'danger')
+                 print(e)
+             return redirect(url_for('register', email=form.email.data))
+         return redirect(url_for('home'))
+
+     @app.route('/newsletters')
+     def list_newsletters():
+         newsletters = Newsletter.query.order_by(Newsletter.created_at.desc()).all()
+         return render_template('list_newsletters.html', newsletters=newsletters)
+
+     @app.route('/newsletters/<int:newsletter_id>')
+     def view_newsletter(newsletter_id):
+         newsletter = Newsletter.query.get_or_404(newsletter_id)
+         return render_template('view_newsletter.html', newsletter=newsletter)
+     @app.route('/generate-newsletter', methods=['POST'])
+     @login_required
+
+     def generate_newsletter():
+         # Ensure the user has the 'admin' role
+         if current_user.role != 'admin':
+             flash('You must be an admin to access this feature.', 'danger')
+             return redirect(url_for('admin'))
+
+         newsletter_content = create_newsletter_content()
+         return render_template('display_newsletter.html', newsletter_content=newsletter_content)
+     
+     @app.route('/account', methods=['GET', 'POST'])
+     @app.route('/account/profile', methods=['GET', 'POST'])
+     @login_required
+     def account_profile():
+         profile_form = ProfileForm(obj=current_user)
+
+         if profile_form.validate_on_submit():
+             current_user.name = profile_form.name.data
+             current_user.email = profile_form.email.data
+
+             # Check if the updated email already exists
+             existing_user = User.query.filter(User.email == profile_form.email.data, User.id != current_user.id).first()
+             if existing_user:
+                 flash('Email already in use by another account.', 'danger')
+                 return redirect(url_for('account_profile'))
+
+             # Commit changes to the database
+             db.session.commit()
+             flash('Your profile has been updated.', 'success')
+             return redirect(url_for('account_profile'))
+
+         return render_template('account/account.html', section='profile', profile_form=profile_form)
+
+     @app.route('/account/my-events', methods=['GET'])
+     @login_required
+     def account_my_events():
+         user_events = get_user_events(current_user.id)
+         return render_template('account/account.html', section='my-events', events=user_events)
+
+
+     @app.route('/edit-event/<int:event_id>', methods=['GET', 'POST'])
+     @login_required
+     def edit_event(event_id):
+         event = Event.query.get_or_404(event_id)
+         featured_event = FeaturedEvent.query.filter_by(event_id=event_id).first()
+         venue = Venue.query.get(event.venue_id)
+
+         if current_user.id != event.user_id and current_user.role != 'admin':
+             flash('You are not authorized to edit this event.', 'danger')
+             return redirect(url_for('account_my_events'))
+
+         form = EventForm(obj=event)
+         is_themove = featured_event.is_themove if featured_event else False
+
+         if form.validate_on_submit():
+             venue = Venue.query.get(form.venue_id.data)
+             venue_slug = slugify(venue.name)
+             event_slug = slugify(form.name.data)
+
+             if form.image.data:
+                 file = form.image.data
+                 filename = secure_filename(file.filename)
+                 s3_filepath = f'images/venues/{venue_slug}/{filename}'
+
+                 # Ensure the temp directory exists
+                 temp_dir = os.path.join(current_app.root_path, 'static/temp')
+                 os.makedirs(temp_dir, exist_ok=True)
+
+                 temp_path = os.path.join(temp_dir, filename)
+                 file.save(temp_path)
+
+                 # Optimize the image
+                 process_image(temp_path, output_width=600, quality=85)
+
+                 # Upload the optimized image to S3
+                 with open(temp_path, 'rb') as optimized_img:
+                     s3_client.upload_fileobj(
+                         optimized_img,
+                         AWS_S3_BUCKET_NAME,
+                         s3_filepath
+                     )
+
+                 image_path = f'https://{AWS_S3_BUCKET_NAME}.s3.amazonaws.com/{s3_filepath}'
+
+                 # Remove the temporary file
+                 os.remove(temp_path)
+
+                 # Update the image path in the database
+                 event.image_path = image_path
+
+             # Update other event details
+             event.name = form.name.data
+             event.description = form.description.data
+             event.time_date = form.time_date.data
+             event.venue_id = form.venue_id.data
+             event.slug = event_slug
+
+             # Admin-only: Update the 'is_themove' status for the featured event
+             if current_user.role == 'admin':
+                 is_themove_status = 'is_themove' in request.form and request.form.get('is_themove') == 'on'
+                 if is_themove_status:
+                     if featured_event:
+                         featured_event.is_themove = True
+                     else:
+                         new_featured_event = FeaturedEvent(event_id=event.id, is_themove=True)
+                         db.session.add(new_featured_event)
+                 elif featured_event:
+                     featured_event.is_themove = False
+
+             db.session.commit()
+             flash('Event updated successfully!', 'success')
+             return redirect(url_for('account_my_events'))
+
+         return render_template('account/edit_event.html', form=form, event=event, venue=venue, is_themove=is_themove)
+
+
+     @app.route('/delete-event/<int:event_id>', methods=['POST'])
+     @login_required
+     def delete_event(event_id):
+         event = Event.query.get_or_404(event_id)
+
+         # Check if the event is featured and delete the reference
+         FeaturedEvent.query.filter_by(event_id=event_id).delete()
+
+         # Now delete the event
+         db.session.delete(event)
+
+         try:
+             db.session.commit()
+             flash('Event deleted successfully.', 'success')
+         except SQLAlchemyError as e:
+             db.session.rollback()
+             flash('An error occurred. Event could not be deleted.', 'danger')
+             print(e)
+
+         return redirect(url_for('account_my_events'))  # or appropriate redirection
+
+     @app.route('/account/change-password', methods=['GET', 'POST'])
+     @login_required
+     def change_password():
+         form = ChangePasswordForm()
+         if form.validate_on_submit():
+             if check_password_hash(current_user.password_hash, form.old_password.data):
+                 current_user.password_hash = generate_password_hash(form.new_password.data)
+                 db.session.commit()
+                 flash('Your password has been updated.', 'success')
+                 return redirect(url_for('account_profile'))  # Redirect to a different page as needed
+             else:
+                 flash('Current password is incorrect.', 'danger')
+
+         return render_template('account/change_password.html', form=form)
+
+     @app.route('/add-venue', methods=['GET', 'POST'])
+     @login_required
+     def add_venue():
+         form = VenueForm()
+         if form.validate_on_submit():
+             venue = Venue(
+                 name=form.name.data,
+                 city=form.city.data,
+                 state=form.state.data,
+                 zip=form.zip.data,
+                 website=form.website.data,
+                 instagram_handle=form.instagram_handle.data,
+                 phone=form.phone.data,
+                 address_1=form.address_1.data,
+                 address_2=form.address_2.data,
+                 user_id=current_user.id,
+                 description=form.description.data
+
+             )
+
+             if form.image.data:
+                 file = form.image.data
+                 filename = secure_filename(file.filename)
+                 venue_slug = slugify(venue.name)
+                 s3_filepath = f'images/venues/{venue_slug}/{filename}'
+
+                 # Save image temporarily for optimization
+                 temp_path = os.path.join(current_app.static_folder, 'temp', filename)
+                 file.save(temp_path)
+
+                 # Process the image
+                 process_image(temp_path)
+
+                 # Upload the optimized file to S3
+                 with open(temp_path, 'rb') as optimized_file:
+                     s3_client.upload_fileobj(
+                         optimized_file,
+                         AWS_S3_BUCKET_NAME,
+                         s3_filepath
+                     )
+
+                 # Set the S3 URL as the image path
+                 venue.image_path = f'https://{AWS_S3_BUCKET_NAME}.s3.amazonaws.com/{s3_filepath}'
+
+                 # Remove the temporary file
+                 os.remove(temp_path)
+             else:
+                 venue.image_path = None
+
+             venue.generate_slug()
+             db.session.add(venue)
+             try:
+                 db.session.commit()
+                 flash('Venue has been added successfully!', 'success')
+             except SQLAlchemyError as e:
+                 db.session.rollback()
+                 flash('An error occurred. Venue could not be added.', 'danger')
+                 print(e)
+
+             return redirect(url_for('add_venue'))
+
+         return render_template('add_venue.html', form=form)
+
+     @app.route('/account/my-venues', methods=['GET'])
+     @login_required
+     def account_my_venues():
+         user_venues = Venue.query.filter_by(user_id=current_user.id).all()
+         return render_template('account/my_venues.html', venues=user_venues)
+         
+     @app.route('/edit-venue/<int:venue_id>', methods=['GET', 'POST'])
+     @login_required
+     def edit_venue(venue_id):
+         venue = Venue.query.get_or_404(venue_id)
+         if venue.user_id != current_user.id:
+             flash('You are not authorized to edit this venue.', 'danger')
+             return redirect(url_for('account_my_venues'))
+
+         form = VenueForm(obj=venue)
+         if form.validate_on_submit():
+             # Process the image if it's updated
+             if form.image.data:
+                 file = form.image.data
+                 filename = secure_filename(file.filename)
+                 s3_filepath = f'images/venues/{venue.slug}/{filename}'
+
+                 # Process the image
+                 temp_path = os.path.join(current_app.static_folder, 'temp', filename)
+                 file.save(temp_path)
+                 process_image(temp_path)
+
+                 # Upload the optimized image to S3
+                 with open(temp_path, 'rb') as data:
+                     s3_client.upload_fileobj(
+                         data,
+                         AWS_S3_BUCKET_NAME,
+                         s3_filepath
+                         )
+
+                 # Remove the temporary file
+                 os.remove(temp_path)
+
+                 # Update the image path
+                 venue.image_path = f'https://{AWS_S3_BUCKET_NAME}.s3.amazonaws.com/{s3_filepath}'
+
+             # Update other venue details
+             venue.name = form.name.data
+             venue.address_1 = form.address_1.data
+             venue.address_2 = form.address_2.data
+             venue.city = form.city.data
+             venue.state = form.state.data
+             venue.zip = form.zip.data
+             venue.phone = form.phone.data
+             venue.website = form.website.data
+             venue.instagram_handle = form.instagram_handle.data
+             venue.description = form.description.data
+             # ... update other fields as necessary ...
+
+             db.session.commit()
+             flash('Venue updated successfully!', 'success')
+             return redirect(url_for('account_my_venues'))
+
+         return render_template('account/edit_venue.html', form=form, venue=venue)
+
+     @app.route('/account/all-events')
+     @login_required
+     def account_all_events():
+         if not is_admin(current_user):
+             flash('You must be an admin to access this page.', 'danger')
+             return redirect(url_for('account_profile'))
+
+         events = Event.query.all()
+         return render_template('account/all_events.html', events=events)
+
+     @app.route('/account/all-venues')
+     @login_required
+     def account_all_venues():
+         if not is_admin(current_user):
+             flash('You must be an admin to access this page.', 'danger')
+             return redirect(url_for('account_profile'))
+
+         venues = Venue.query.all()
+         return render_template('account/all_venues.html', venues=venues)
+
+     @app.route('/sitemap.xml')
+     def sitemap():
+         host_components = request.host.split('.')
+         base_url = request.host_url
+         if "localhost" not in host_components:
+             base_url = "https://themovenashville.com"
+
+         # Collect all URLs
+         urls = []
+
+         # Static routes
+         urls.append(["/", "monthly", 1.0])
+         urls.append(["/about", "yearly", 0.8])
+         # Add more static URLs as needed
+
+         # Dynamic routes (e.g., events, venues)
+         events = Event.query.all()
+         for event in events:
+             url = f"/events/{event.slug}"
+             urls.append([url, "weekly", 0.8])
+         # Add other dynamic content like venues, etc.
+
+         for venue in Venue.query.all():
+             url = f"/venues/{venue.slug}"
+             urls.append([url, "weekly", 0.8])
+
+         xml_sitemap = render_template('sitemap_template.xml', base_url=base_url, urls=urls)
+         response = make_response(xml_sitemap)
+         response.headers["Content-Type"] = "application/xml"
+
+         return response
+
+
+     scheduler = APScheduler()
+     scheduler.init_app(app)
+     scheduler.start()
+     scheduler.add_job(func=lambda: store_weekly_newsletter(app), trigger='interval', minutes=60, id='newsletter_job')
+     #scheduler.add_job(func=lambda: store_weekly_newsletter(app), trigger='cron', day='*', id='newsletter_job')
+     scheduler.add_job(func=lambda: send_daily_newsletter(app), trigger='interval', minutes=60, id='daily_newsletter_job')
+     #scheduler.add_job(func=lambda: send_daily_newsletter(app), trigger='cron', day='*', id='daily_newsletter_job')
+
+     return app
+
+if __name__ == '__main__':
+    app = create_app()
+    app.run(host='0.0.0.0', debug=True)----- Contents of models.py -----
+from extensions import db
+from flask_login import UserMixin
+from werkzeug.security import check_password_hash, generate_password_hash
+from slugify import slugify
+from sqlalchemy.ext.hybrid import hybrid_property
+from datetime import datetime
+
+
+class User(UserMixin, db.Model):
+     id = db.Column(db.Integer, primary_key=True)
+     name = db.Column(db.String(100), nullable=False)
+     email = db.Column(db.String(120), unique=True, nullable=False)
+     password_hash = db.Column(db.String(256))
+     role = db.Column(db.String(10), nullable=True)
+     events = db.relationship('Event', backref='author', lazy=True)
+
+     def set_password(self, password):
+          self.password_hash = generate_password_hash(password)
+
+     def check_password(self, password):
+          return check_password_hash(self.password_hash, password)
+
+class Venue(db.Model):
+     id = db.Column(db.Integer, primary_key=True)
+     name = db.Column(db.String(100), nullable=False)
+     city = db.Column(db.String(100), nullable=False)
+     state = db.Column(db.String(50), nullable=False)
+     zip = db.Column(db.String(20), nullable=False)
+     website = db.Column(db.String(200))
+     events = db.relationship('Event', backref='venue', lazy=True)
+     image_path = db.Column(db.String(255))  # or 'image_filename'
+     slug = db.Column(db.String(255), unique=True, nullable=False)
+     instagram_handle = db.Column(db.String(255))  # Instagram username
+     phone = db.Column(db.String(20))  # Adjust the length as needed
+     address_1 = db.Column(db.String(255))  # Adjust the length as needed
+     address_2 = db.Column(db.String(255))  # Adjust the length as needed
+     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+     user = db.relationship('User', backref='venue')
+     description = db.Column(db.Text, nullable=True)  # Add this line
+
+     def generate_slug(self):
+         self.slug = slugify(self.name)
+
+class Event(db.Model):
+     id = db.Column(db.Integer, primary_key=True)
+     venue_id = db.Column(db.Integer, db.ForeignKey('venue.id'), nullable=False)
+     time_date = db.Column(db.DateTime, nullable=False)
+     type = db.Column(db.String(50), nullable=True)
+     description = db.Column(db.Text, nullable=False)
+     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+     image_path = db.Column(db.String(255))  # Field to store the image path
+     slug = db.Column(db.String(255), unique=True, nullable=False)
+     name = db.Column(db.String(255), nullable=False)
+     
+     def generate_slug(self):
+          self.slug = slugify(self.name)
+          
+class InstagramPost(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    venue_id = db.Column(db.Integer, db.ForeignKey('venue.id'), nullable=False)
+    caption = db.Column(db.Text)
+    date = db.Column(db.DateTime, nullable=False)
+    image_path = db.Column(db.String(255), nullable=False)
+
+class Email(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+
+class FeaturedEvent(db.Model):
+    __tablename__ = 'featured_events'
+    id = db.Column(db.Integer, primary_key=True)
+    event_id = db.Column(db.Integer, db.ForeignKey('event.id'))
+    is_themove = db.Column(db.Boolean, default=False, nullable=False)
+    newsletter_created = db.Column(db.Boolean, default=False)  # Add this line
+
+    # ... other fields ...
+
+class Sponsor(db.Model):
+    __tablename__ = 'sponsors'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False)
+    image_path = db.Column(db.String(255), nullable=False)
+    url = db.Column(db.String(255))
+    # ... other fields ...
+
+class FeaturedImage(db.Model):
+    __tablename__ = 'featured_images'
+    id = db.Column(db.Integer, primary_key=True)
+    image_path = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text)
+    # ... other fields ...
+
+class Newsletter(db.Model):
+    __tablename__ = 'newsletters'
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    sent = db.Column(db.Boolean, default=False)  # Add this line
+    subject = db.Column(db.String(255), nullable=False)
+    html_content = db.Column(db.Text, nullable=False)
+
+
+    # ... other fields you might need, like status, send_date, etc. ...
+----- Contents of extensions.py -----
+from flask_sqlalchemy import SQLAlchemy as _BaseSQLAlchemy
+
+class SQLAlchemy(_BaseSQLAlchemy):
+    def apply_pool_defaults(self, app, options):
+        super(SQLAlchemy, self).apply_pool_defaults(app, options)
+        options["pool_pre_ping"] = True
+
+# Initialize db with the custom class
+db = SQLAlchemy()----- Contents of forms.py -----
+from flask_wtf import FlaskForm
+from wtforms import StringField, TextAreaField, SubmitField, DateTimeField, SelectField, PasswordField, validators
+from wtforms.validators import DataRequired, Email, Length, EqualTo
+from models import Venue
+from flask_wtf.file import FileField, FileAllowed
+
+class RegistrationForm(FlaskForm):
+	 name = StringField('Name', validators=[DataRequired()])
+	 email = StringField('Email', validators=[DataRequired(), Email()])
+	 password = PasswordField('Password', validators=[DataRequired(), Length(min=6)])
+	 submit = SubmitField('Sign Up')
+
+class LoginForm(FlaskForm):
+	 email = StringField('Email', validators=[DataRequired()])
+	 password = PasswordField('Password', validators=[DataRequired()])
+	 submit = SubmitField('Login')
+
+class EventForm(FlaskForm):
+	 name = StringField('Event Name', validators=[DataRequired()])
+	 description = TextAreaField('Event Description', validators=[DataRequired()])
+	 time_date = DateTimeField('Event Date and Time', format='%Y-%m-%dT%H:%M', validators=[DataRequired()])
+	 image = FileField('Event Image', validators=[FileAllowed(['jpg', 'png','jpeg'], 'Images only!')])
+
+	 venue_id = SelectField('Venue', coerce=int, validators=[DataRequired()])
+
+	 def __init__(self, *args, **kwargs):
+		  super(EventForm, self).__init__(*args, **kwargs)
+		  self.venue_id.choices = [(v.id, v.name) for v in Venue.query.order_by(Venue.name).all()]
+
+	 submit = SubmitField('Create Event')
+
+class EmailCaptureForm(FlaskForm):
+	 email = StringField('Email', validators=[DataRequired(), Email()])
+	 submit = SubmitField('Get on The List')
+
+class ProfileForm(FlaskForm):
+	 name = StringField('Name', validators=[DataRequired(), Length(min=2, max=100)])
+	 email = StringField('Email', validators=[DataRequired(), Email(), Length(min=6, max=120)])
+
+class ChangePasswordForm(FlaskForm):
+	 old_password = PasswordField('Old Password', validators=[DataRequired()])
+	 new_password = PasswordField('New Password', validators=[
+		  DataRequired(),
+		  EqualTo('confirm_new_password', message='Passwords must match.')
+	 ])
+	 confirm_new_password = PasswordField('Confirm New Password', validators=[DataRequired()])
+	 submit = SubmitField('Change Password')
+
+	 def validate_old_password(self, old_password):
+		  # Check if the old password is correct
+		  if not check_password_hash(current_user.password_hash, old_password.data):
+			  raise ValidationError('The old password is incorrect.')
+
+class ChangePasswordForm(FlaskForm):
+ old_password = PasswordField('Current Password', validators=[DataRequired()])
+ new_password = PasswordField('New Password', validators=[DataRequired()])
+ confirm_new_password = PasswordField('Confirm New Password',
+												  validators=[DataRequired(), EqualTo('new_password', message='Passwords must match.')])
+ submit = SubmitField('Change Password')
+
+class VenueForm(FlaskForm):
+	 name = StringField('Name', validators=[DataRequired()])
+	 address_1 = StringField('Address 1', validators=[DataRequired()])
+	 address_2 = StringField('Address 2')
+	 city = StringField('City', validators=[DataRequired()])
+	 state = StringField('State', validators=[DataRequired()])
+	 zip = StringField('Postal Code', validators=[DataRequired()])
+	 phone = StringField('Phone Number', validators=[validators.Optional()])
+	 website = StringField('Website')
+	 instagram_handle = StringField('Instagram')
+	 image = FileField('Image', validators=[FileAllowed(['jpg', 'png', 'jpeg'], 'Images only!')])
+	 description = TextAreaField('Description')
+	 submit = SubmitField('Add Venue')
+	
+----- Contents of templates/base.html -----
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+	 <title>{% block title %}Default Title | The Move{% endblock %}</title>
+	 <meta name="description" content="{% block description %}Default description{% endblock %}">
+	 <!-- Open Graph / Facebook -->
+	 <meta property="og:type" content="website">
+	 <meta property="og:title" content="{% block og_title %}Default Title | The Move{% endblock %}">
+	 <meta property="og:description" content="{% block og_description %}Default description{% endblock %}">
+	 <meta property="og:image" content="{% block og_image %}Default Image URL{% endblock %}">
+	 <!-- Twitter -->
+	 <meta property="twitter:card" content="summary_large_image">
+	 <meta property="twitter:title" content="{% block twitter_title %}Default Title | The Move{% endblock %}">
+	 <meta property="twitter:description" content="{% block twitter_description %}Default description{% endblock %}">
+	 <meta property="twitter:image" content="{% block twitter_image %}Default Image URL{% endblock %}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+	 <!-- Google Analytics -->
+	<!-- Google tag (gtag.js) -->
+	<script async src="https://www.googletagmanager.com/gtag/js?id=G-CF8C8S5Y56"></script>
+	<script>
+	  window.dataLayer = window.dataLayer || [];
+	  function gtag(){dataLayer.push(arguments);}
+	  gtag('js', new Date());
+
+	  gtag('config', 'G-CF8C8S5Y56');
+	</script>
+	 <!-- End Google Analytics -->
+</head>
+<body>
+	<header>
+			<div class="container">
+					<!-- <h1><a href="{{ url_for('home') }}">The Move Nashville</a></h1> -->
+					<a href="{{ url_for('home') }}"><img src="{{ url_for('static', filename='images/the-move-logo-invert.png') }}"></a></img> 
+					<nav>
+							<ul>
+									<li><a href="{{ url_for('home') }}">The Move</a></li>
+									<li><a href="{{ url_for('venue_list') }}">Venues</a></li>
+									<li><a href="{{ url_for('add_event') }}">Add Event</a></li>
+								{% if current_user.is_authenticated %}
+									 <li><a href="{{ url_for('account_profile') }}">My Account</a></li>
+								{% else %}
+									 <li><a href="{{ url_for('login') }}">Login</a></li>
+								{% endif %}
+							</ul>
+						
+					</nav>
+
+			</div>
+
+	</header>
+    <main class="container">
+			{% for message in get_flashed_messages() %}
+			<div class="flash-message">
+				 {{ message }}
+			</div>
+			{% endfor %}
+        {% block content %}
+        {% endblock %}
+    </main>
+    <footer>
+        <div class="container">
+            <p>&copy; 2023 The Move. All Rights Reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>
+----- Contents of static/css/style.css -----
+/* Basic Reset */
+* {
+		margin: 0;
+		padding: 0;
+		box-sizing: border-box;
+}
+
+html, body {
+	 height: 100%;
+	 margin: 0;
+}
+
+body {
+		font-family: Arial, sans-serif;
+		background-color: #f4f4f4;
+		color: #333;
+		line-height: 1.6;
+	 display: flex;
+	 flex-direction: column;
+}
+
+header {
+		background: #333;
+		color: #fff;
+		padding: 1rem 0;
+		text-align: center;
+}
+
+header img {width: 325px;}
+
+header h1 a {
+	color: #fff;
+}
+
+header nav {
+		display: flex;
+		justify-content: center;
+		gap: 15px;
+		margin-top: 10px;
+}
+
+header nav a {
+		color: #fff;
+		text-decoration: none;
+}
+
+nav ul {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+}
+
+nav ul li {
+		display: inline;
+		margin-right: 20px;
+}
+
+nav ul li:last-child {
+		margin-right: 0;
+}
+
+nav a {
+		text-decoration: none;
+		color: inherit; /* or specify a color */
+}
+
+main {
+	 flex: 1;
+	 padding: 20px;
+	 display: flex;
+	 flex-direction: column;
+}
+
+
+footer {
+	 text-align: center;
+	 padding: 20px;
+	 background: #333;
+	 color: #fff;
+	 width: 100%;
+}
+
+
+.error {
+		color: red;
+		font-size: 0.8em;
+}
+
+.container h1 {text-align: center;}
+/* Card Style */
+
+
+.card {
+  width: 300px; /* Fixed width */
+  height: 320px; /* Fixed height, slightly larger than width */
+  margin: auto;
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  display: flex;
+	  position: relative;
+  flex-direction: column;
+  cursor: pointer;
+transition: transform 0.3s ease, box-shadow 0.3s ease; /* Add smooth transition for transform and shadow */
+
+}
+
+.event-image-container {
+  height: 150px; /* Fixed height for image */
+  overflow: hidden; /* Ensures the image does not break the card's shape */
+}
+
+.event-image-container img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* Ensures the image covers the area, might be cropped */
+}
+
+.card-content {
+  padding: 15px;
+  text-align: center;
+  background-color: white;
+  color: #333;
+  flex-grow: 1; /* Takes up the rest of the space in the card */
+}
+
+.event-location, .event-date {
+  color: #555;
+}
+
+.card-content h2 {line-height: 1.2;}
+
+.card::before {
+	 content: '';
+	 position: absolute;
+	 top: 0;
+	 right: 0;
+	 bottom: 0;
+	 left: 0;
+	 background: rgba(0, 0, 0, 0);
+	 transition: background 0.3s;
+}
+
+
+
+.card:hover {
+  transform: translateY(-5px); /* Move card up slightly */
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2); /* Larger shadow for "raised" effect */
+}
+
+.card-link {
+ text-decoration: none; /* Removes underline from links */
+ color: inherit;
+}
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .card-container {
+	 grid-template-columns: 1fr; /* Single column layout */
+  }
+  .card {
+	 width: 100%; /* Full width on smaller screens */
+	 margin-bottom: 20px; /* Space between cards */
+  }
+}
+
+@media (min-width: 601px) {
+  .card-container {
+	 grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); /* Adjust number of cards based on available width */
+  }
+}
+
+/* Medium screens (small desktops/large tablets): 3 cards per row */
+@media (min-width: 901px) and (max-width: 1200px) {
+  .card-container {
+	 grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Large screens: 4 cards per row */
+@media (min-width: 1201px) {
+  .card-container {
+	 grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* Form Style within Card */
+.detail-card form {
+		display: grid;
+		grid-gap: 10px;
+}
+
+.form-input {
+		border: 1px solid #ddd;
+		border-radius: 4px;
+		padding: 10px;
+		font-size: 16px;
+}
+
+.form-input:focus {
+		outline: none;
+		border-color: #007bff;
+}
+
+.form-submit {
+		background-color: #007bff;
+		color: white;
+		border: none;
+		border-radius: 4px;
+		padding: 10px;
+		cursor: pointer;
+		font-size: 16px;
+}
+
+.form-submit:hover {
+		background-color: #0056b3;
+}
+
+.error {
+		color: red;
+		font-size: 0.8em;
+}
+/* Ensure the container centers everything and has some padding */
+.card-container {
+  display: grid;
+  gap: 20px;
+  padding: 20px;
+  margin: 0 auto;
+  max-width: 1400px;
+}
+
+/* Full width for form and its elements */
+
+
+/* Label and input full width */
+.detail-card form label,
+.detail-card form input,
+.deatil-card form button {
+		width: 100%;
+		display: block;
+}
+
+.detail-container {
+	 display: flex;
+	 justify-content: center; /* Horizontally center the card */
+	 align-items: center; /* Vertically center the card (optional) */
+	 min-height: 10vh; /* Adjust as needed for vertical centering */
+	 padding: 20px;
+
+}
+
+.detail-card {
+	 width: 100%;
+	 max-width: 600px; /* Adjust the max width for detail card */
+	background-color: white;
+	border: 1px solid #ddd;
+	border-radius: 8px;
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	margin: 10px;
+	padding: 20px;
+}
+
+.venue-card {
+	 background-size: cover; /* Cover the entire area of the card */
+	 background-position: center; /* Center the background image */
+	 color: white; /* Text color */
+	 display: flex;
+	 justify-content: center; /* Center content horizontally */
+	 align-items: center; /* Center content vertically */
+	 height: 200px; /* Adjust the height as needed */
+	 position: relative; /* Needed for text positioning */
+	 text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5); /* Text drop shadow */
+	 transition: transform 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease;
+	 cursor: pointer;
+}
+
+.venue-card::before {
+	 content: '';
+	 position: absolute;
+	 top: 0;
+	 right: 0;
+	 bottom: 0;
+	 left: 0;
+	 background: rgba(0, 0, 0, 0); /* Initially transparent */
+	 transition: background 0.3s; /* Smooth transition for the overlay */
+	 border-radius: 8px; /* Match the border radius of the card */
+}
+
+.venue-card:hover::before {
+	 background: rgba(0, 0, 0, 0.5); /* Darken the card */
+}
+
+.venue-card:hover {
+	 transform: translateY(-5px);
+	 box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+	 background-color: #333; /* Or any dark color you prefer */
+	 color: #fff; /* Change text color to maintain contrast if needed */
+
+}
+
+.venue-card-link {
+	 text-decoration: none;
+	 color: inherit;
+}
+
+
+.venue-card h2 {
+	 z-index: 1; /* Ensure text is above the overlay */
+	text-align: center;
+	line-height: 1;
+}
+
+.venue-cover {
+	 background-size: cover;
+	 background-position: center;
+	 padding: 50px 0;
+	 text-align: center;
+	 color: white;
+	 /* Additional styling as needed */
+}
+
+
+.venue-cover {
+	 background-size: cover;
+	 background-position: center;
+	 padding: 100px 0;
+	 color: white;
+	 text-align: center;
+}
+
+.venue-title h1 {
+	 margin: 0;
+	 padding: 0;
+	 background: rgba(0, 0, 0, 0.5); /* Dark background for readability */
+	 display: inline-block;
+	 padding: 10px 20px;
+}
+
+.venue-details {
+	 margin-top: 20px;
+}
+
+.venue-info p {
+	 margin-bottom: 10px;
+}
+.venue-image-container img {
+	 width: 100%; /* Make image take up the entire container width */
+	 border-top-left-radius: 8px; /* Round the top left corner */
+	 border-top-right-radius: 8px; /* Round the top right corner */
+	 display: block; /* Remove any extra space below the image */
+}
+.instagram-placeholder {
+	 background-color: #f3f3f3;
+	 padding: 20px;
+	 margin-top: 20px;
+	 text-align: center;
+	 color: #333;
+}
+
+/* Ensure that the button styles do not conflict */
+.form-submit {
+		width: 100%;
+		margin-top: 10px; /* Add some space above the button */
+}
+
+/* Adjust padding and margin for form elements */
+.form-input,
+.form-submit {
+		padding: 10px;
+		margin-bottom: 10px; /* Add space between form elements */
+}
+.flash-message {
+	 background-color: #f2dede;
+	 border-color: #ebccd1;
+	 color: #a94442;
+	 padding: 15px;
+	 margin-bottom: 20px;
+	 border: 1px solid transparent;
+	 border-radius: 4px;
+	text-align: center;
+
+	margin: 0px auto;
+
+}
+
+<!-- Additional CSS for styling -->
+
+.venue-cover {
+	 background-size: cover;
+	 background-position: center;
+	 padding: 100px 0;
+	 color: white;
+	 text-align: center;
+}
+
+.venue-title h1 {
+	 margin: 0;
+	 padding: 0;
+	 background: rgba(0, 0, 0, 0.5); /* Dark background for readability */
+	 display: inline-block;
+	 padding: 10px 20px;
+}
+
+.venue-container {
+	 display: flex;
+	 justify-content: center;
+}
+
+.venue-detail-card {
+	 background-color: white;
+	 border: 1px solid #ddd;
+	 border-radius: 8px;
+	 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	 margin: -80px 0 20px;
+	 padding: 20px;
+	 width: 80%; /* Adjust width as necessary */
+	 max-width: 600px; /* Set a maximum width */
+}
+
+.venue-info p, .social-links {
+	 margin-bottom: 10px;
+}
+
+.instagram-placeholder {
+	 background-color: #f3f3f3;
+	 padding: 20px;
+	 margin-top: 20px;
+	 text-align: center;
+	 color: #333;
+}
+
+.events-grid {
+	 display: flex;
+	 flex-wrap: wrap;
+	 justify-content: center; /* Center grid items */
+	 gap: 20px;
+	 margin: 20px auto; /* Center the grid container */
+}
+
+.event-cover {
+	 background-size: contain; /* Adjust if you want the image to maintain its aspect ratio */
+	 background-repeat: no-repeat;
+	 background-position: center;
+	 width: 100%; /* Full width */
+	 display: block; /* Necessary for the div to be treated as a block-level element */
+	 height: auto; /* Adjust the height as necessary */
+	padding-top: 0px;
+
+}
+
+
+.event-container {
+	 display: flex;
+	 flex-direction: column; /* Stack children elements vertically */
+	 align-items: center; /* Center children elements horizontally */
+	 width: 100%; /* Ensure container takes full width */
+	 max-width: 600px; /* Maximum width of the container */
+	 margin: auto; /* Center the container */
+}
+
+.event-detail-card {
+	 background-color: white;
+	 border: 1px solid #ddd;
+	 border-radius: 8px;
+	 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+
+	 width: 80%; /* Adjust width as necessary */
+	 max-width: 600px; /* Set a maximum width */
+	 position: relative; /* Stack on top of the image */
+	 z-index: 10; /* Ensure it's above the cover (if there was one) */
+	 box-sizing: border-box; /* Include padding in the width */
+}
+
+
+.event-details { padding: 20px;}
+.event-cover {
+	 overflow: hidden;
+}
+
+.event-cover img {
+	 width: 100%;
+	 height: auto;
+	 border-top-left-radius: 8px; /* Rounds the top-left corner */
+	 border-top-right-radius: 8px; /* Rounds the top-right corner */
+}
+
+
+.event-card {
+	 background-color: #fff;
+	 background-size: cover;
+	 background-position: center;
+	 border: 1px solid #ddd;
+	 border-radius: 8px;
+	 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	 padding: 15px;
+	 text-align: center;
+	 position: relative; /* Needed for the hover effect */
+	 overflow: hidden; /* Ensure background doesn't spill out */
+	 color: white; /* Text color */
+	 text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5); 
+	width: 250px;
+	line-height: 1.2;
+
+}
+
+.event-card-content {
+	 position: relative; /* Position text above the overlay */
+	 z-index: 2; /* Ensure text is above the overlay */
+}
+
+.event-card::before {
+	 content: '';
+	 position: absolute;
+	 top: 0; left: 0; right: 0; bottom: 0;
+	 background: rgba(0, 0, 0, 0); /* Initially transparent */
+	 transition: background-color 0.3s ease;
+	 z-index: 1; /* Below the text */
+}
+
+.event-card:hover::before {
+	 background: rgba(0, 0, 0, 0.3); /* Darken on hover */
+}
+
+/* Responsive adjustments and other styles... */
+
+
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+	 .events-grid {
+		  justify-content: space-around;
+	 }
+	 .event-card {
+		  width: 80%; /* Adjust width on smaller screens */
+		  margin-bottom: 20px;
+	 }
+}
+
+
+.event-card h3 {
+	 margin-top: 0;
+}
+
+.upcoming-events-title {
+	 text-align: center;
+	 width: 100%;
+	 margin-bottom: 0px; /* Add some space before the grid */
+	margin-top: 15px;
+}
+
+.upcoming-events-title p {text-align:center;}
+/* Add to your CSS file */
+.email-capture-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 20px; /* Add some space at the top */
+  margin-bottom: 20px; /* Add some space at the bottom */
+}
+
+.email-capture-form {
+  display: flex;
+  align-items: center;
+}
+
+.email-input {
+  flex-grow: 1; /* Allows input to fill the available space */
+  margin-right: 10px; /* Space between input and button */
+  padding: 10px;
+  font-size: 1.2em; /* Larger text inside input */
+  border: 2px solid #ccc; /* Makes the border thicker */
+  border-radius: 5px; /* Slightly rounded corners for the input */
+	width: 300px;
+}
+
+.email-submit {
+  padding: 10px 20px;
+  font-size: 1.2em;
+  background-color: #f9cd2f; /* Example button color */
+  color: #454545;
+  border: none;
+  border-radius: 5px; /* Slightly rounded corners for the button */
+  cursor: pointer;
+}
+
+/* Additional responsiveness for smaller screens */
+@media (max-width: 600px) {
+  .email-capture-form {
+	 flex-direction: column;
+  }
+
+  .email-input {
+	 margin-right: 0;
+	 margin-bottom: 10px; /* Space between input and button on small screens */
+  }
+}
+
+/* Ensure the container centers everything and has some padding */
+.upcoming-card-container {
+  display: grid;
+  gap: 20px;
+  padding: 20px;
+  margin: 0 auto;
+  max-width: 1400px;
+  text-decoration: none;
+}
+.upcoming-card-container a {text-decoration: none;}
+/* Responsive behavior */
+@media (max-width: 600px) {
+  .upcoming-card-container {
+	 grid-template-columns: 1fr;
+  }
+  .upcoming-card {
+	 margin-bottom: 20px;
+  }
+}
+
+@media (min-width: 601px) {
+  .upcoming-card-container {
+	 grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  }
+}
+
+/* Small tablets and larger: 2 cards per row */
+@media (min-width: 601px) and (max-width: 900px) {
+  .upcoming-card-container {
+	 grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Medium screens (small desktops/large tablets): 3 cards per row */
+@media (min-width: 901px) and (max-width: 1200px) {
+  .upcoming-card-container {
+	 grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Large screens: 4 cards per row */
+@media (min-width: 1201px) {
+  .upcoming-card-container {
+	 grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.upcoming-card {
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  position: relative;
+  /*padding-top: 100%; /* 1:1 Aspect Ratio */
+  background-size: cover;
+  background-position: center;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  cursor: pointer;
+	width: 300px;
+
+}
+
+.upcoming-card-content {
+  position: relative;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  color: white; /* White text color */
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7); /* Text shadow for readability */
+  text-align: center;
+  z-index: 1;
+	height: 250px;
+
+}
+
+.upcoming-card-content h2 {line-height: 1.2;}
+
+.upcoming-card::before {
+	 content: '';
+	 position: absolute;
+	 top: 0;
+	 right: 0;
+	 bottom: 0;
+	 left: 0;
+	 background: rgba(0, 0, 0, 0);
+	 transition: background 0.3s;
+}
+
+.upcoming-card:hover::before {
+	 background: rgba(0, 0, 0, 0.5);
+}
+
+
+
+.upcoming-card-link {
+ text-decoration: none; /* Removes underline from links */
+ color: inherit;
+}
+
+/* General styles, not inside any media query, will apply to all sizes */
+
+/* Account Page Styles */
+.account-container {
+	 display: flex;
+	 margin: 20px;
+}
+
+.account-sidebar {
+	 flex: 1;
+	 margin-right: 20px;
+}
+
+.account-sidebar ul {
+	 list-style-type: none;
+	 padding: 0;
+}
+
+.account-sidebar li {
+	 padding: 10px;
+	 background: #fff;
+	 border: 1px solid #ddd;
+	 margin-bottom: 8px;
+	 border-radius: 8px;
+	 text-align: center;
+}
+
+.account-sidebar li a {
+	 text-decoration: none;
+	 color: #333;
+}
+
+.account-content {
+	 flex: 3;
+	 background: #fff;
+	 border: 1px solid #ddd;
+	 border-radius: 8px;
+	 padding: 20px;
+}
+
+/* Mobile Styles */
+@media (max-width: 768px) {
+	 .account-container {
+		  flex-direction: column;
+		  margin: 10px;
+	 }
+
+	 .account-sidebar {
+		  margin-right: 0;
+		  margin-bottom: 20px;
+	 }
+
+	 .account-sidebar ul {
+		  display: flex;
+		  overflow-x: auto;
+		  padding-bottom: 10px;
+	 }
+
+	 .account-sidebar li {
+		  flex: 1;
+		  min-width: 50%; /* Ensures that buttons are usable on mobile */
+	 }
+
+	 .account-content {
+		  padding: 10px;
+	 }
+
+	 /* Adjustments for form elements for smaller screens */
+	 .form-control, .btn-primary {
+		  font-size: 16px; /* Larger font size for better readability */
+		  padding: 12px; /* Larger padding for easier interaction */
+	 }
+
+	 /* Ensure the button is full-width on smaller screens */
+	 .btn-primary {
+		  width: 100%;
+		  box-sizing: border-box; /* Includes padding in the width calculation */
+	 }
+
+	 /* Adjusts form layout for smaller screens */
+	 .profile-section-form {
+		  max-width: none; /* Allows form to expand full width */
+	 }
+}
+
+/* Use similar media queries for any other specific mobile adjustments needed */
+
+
+/* Form Styles Consistent with Provided Template */
+.form-group {
+	 margin-bottom: 15px;
+}
+
+.form-group label {
+	 display: block;
+	 margin-bottom: 5px;
+	 font-weight: bold;
+}
+
+.form-control {
+	 width: 100%;
+	 padding: 10px;
+	 border: 1px solid #ccc;
+	 border-radius: 4px;
+	 font-size: 1em;
+}
+
+.form-control:focus {
+	 border-color: #007bff;
+	 box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+}
+
+.btn-primary {
+	 color: #fff;
+	 background-color: #007bff;
+	 border-color: #007bff;
+	 padding: 10px 15px;
+	 border-radius: 4px;
+	 cursor: pointer;
+	 font-size: 1em;
+}
+
+.btn-primary:hover {
+	 background-color: #0056b3;
+	 border-color: #004085;
+}
+
+.text-danger {
+	 color: #dc3545; /* Bootstrap danger color */
+}
+
+/* Additional Styling for Profile Section Form */
+.profile-section-form {
+	 max-width: 600px; /* Adjust as needed */
+	 margin: 20px auto; /* Center the form */
+	 background-color: #fff;
+	 border: 1px solid #ddd;
+	 border-radius: 8px;
+	 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	 padding: 20px;
+}
+.events-table {
+	 width: 100%;
+	 border-collapse: collapse;
+}
+
+.events-table-header, .events-table-row {
+	 display: flex;
+	 background-color: #f9f9f9;
+	 padding: 10px;
+	 border-bottom: 1px solid #eaeaea;
+}
+
+.events-table-header {
+	 font-weight: bold;
+	 background-color: #eee;
+}
+
+.events-table-row:hover {
+	 background-color: #f4f4f4;
+}
+
+.event-name, .event-venue, .event-date, .event-action {
+	 flex: 1;
+	 padding: 8px;
+	 text-align: left;
+}
+
+.btn-edit {
+	 padding: 6px 12px;
+	 background-color: #007bff;
+	 color: white;
+	 text-decoration: none;
+	 border-radius: 4px;
+	 text-align: center;
+	 display: inline-block;
+}
+
+
+
+.btn-delete {
+	 padding: 6px 12px;
+	 background-color: #007bff;
+	 color: white;
+	 text-decoration: none;
+	 border-radius: 4px;
+	 text-align: center;
+	 display: inline-block;
+}
+
+
+
+.add-venue-link {padding-left: 10px;}
+.venues-table {
+	 width: 100%;
+	 border-collapse: collapse;
+}
+
+.venues-table-header, .venues-table-row {
+	 display: grid;
+	 grid-template-columns: 2fr 1fr 1fr;
+	 text-align: left;
+	 padding: 10px;
+	 border-bottom: 1px solid #ccc;
+}
+
+.venue-name, .venue-location, .venue-action {
+	 padding: 10px;
+}
+
+.btn-edit, .btn-delete {
+	 text-decoration: none;
+	 padding: 5px 10px;
+	 margin-right: 5px;
+	 color: white;
+	 border-radius: 5px;
+	 font-size: 0.9em;
+}
+
+.btn-edit {
+	 background-color: #4CAF50; /* Green */
+}
+
+.btn-edit:hover {
+	 background-color: #004d01;
+}
+
+.btn-delete {
+	 background-color: #f44336; /* Red */
+}
+
+.btn-delete:hover {
+	 background-color: #800006;
+}
+
+.venues-table-row:hover {
+	 background-color: #f5f5f5;
+}
+
+.venues-table-header {
+	 background-color: #e9e9e9;
+	 font-weight: bold;
+}
+
+/* Adjust the media query as per your layout requirements */
+@media (max-width: 600px) {
+	 .venues-table-header, .venues-table-row {
+		  grid-template-columns: 1fr 0.5fr 0.5fr;
+	 }
+}
+
+.edit-venue-form {
+	 max-width: 600px;
+	 margin: 0 auto;
+	 padding: 20px;
+	 background: #f4f4f4;
+	 border-radius: 8px;
+}
+
+.edit-venue-form label {
+	 display: block;
+	 margin-bottom: 5px;
+	 font-weight: bold;
+}
+
+.edit-venue-form input[type="text"],
+.edit-venue-form input[type="email"],
+.edit-venue-form input[type="file"],
+.edit-venue-form textarea {
+	 width: 100%;
+	 padding: 8px;
+	 margin-bottom: 20px;
+	 border-radius: 4px;
+	 border: 1px solid #ddd;
+}
+
+.edit-venue-form input[type="submit"] {
+	 background-color: #4CAF50;
+	 color: white;
+	 padding: 10px 15px;
+	 border: none;
+	 border-radius: 4px;
+	 cursor: pointer;
+}
+
+.edit-venue-form input[type="submit"]:hover {
+	 background-color: #45a049;
+}
+
+.form-image-preview {
+	 margin-top: 15px;
+	 border-radius: 4px;
+	 max-width: 100%;
+	 height: auto;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+	 .edit-venue-form {
+		  padding: 15px;
+	 }
+}
+
+----- Contents of templates/home.html -----
+{% extends 'base.html' %}
+{% block title %}Nashville Nightlife Events | The Move{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- Add this block to your home.html where you want the form -->
+    <div class="email-capture-container">
+      <form class="email-capture-form" action="{{ url_for('capture_email') }}" method="post">
+        {{ form.hidden_tag() }}
+        <input class="email-input" type="email" name="email" placeholder="Enter your email">
+        <button class="email-submit" type="submit">Get on The List</button>
+      </form>
+    </div>
+
+    <h1>Upcoming Events (Comming Soon)</h1>
+    <div class="card-container">
+        {% for event, venue in events %}
+        <a href="{{ url_for('event_detail', slug=event.slug) }}" class="card-link">
+
+        <div class="card">
+            <div class="event-image-container">
+                <img src="{{ event.image_path if event.image_path else 'images/default_event_image.jpg' }}" alt="{{ event.name }}">
+            </div>
+            <div class="card-content">
+                <h2>{{ event.name }}</h2>
+                <p class="event-location">{{ venue.name }}</p>
+                <p class="event-date">{{ event.time_date.strftime('%A, %B %d, %Y %I:%M %p') }}</p>
+            </div>
+        </div>
+        </a>
+        {% endfor %}
+    </div>
+
+</div>
+{% endblock %}

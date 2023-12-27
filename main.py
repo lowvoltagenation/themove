@@ -3,7 +3,7 @@ from datetime import datetime
 
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
-from flask import Flask, current_app, flash, redirect, render_template, request, url_for
+from flask import Flask, current_app, make_response, flash, redirect, render_template, request, url_for
 from flask_apscheduler import APScheduler
 from flask_login import (
      LoginManager,
@@ -18,6 +18,7 @@ from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 from slugify import slugify
 from sqlalchemy.exc import SQLAlchemyError
+
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -34,13 +35,23 @@ from models import (
      Venue,
 )
 
+import boto3
+
 jobstores = {
     'default': SQLAlchemyJobStore(url=os.environ.get('DATABASE_URL').replace("postgres://", "postgresql://", 1))
 }
 
-AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
-AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
-AWS_S3_BUCKET_NAME = os.environ.get('AWS_S3_BUCKET_NAME')
+AWS_ACCESS_KEY_ID = os.environ.get('AWS_KEY')
+AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET')
+AWS_S3_BUCKET_NAME = os.environ.get('AWS_BUCKET')
+
+s3_client = boto3.client(
+    's3',
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    region_name='us-east-1'
+)
+
 
 
 def create_app():
@@ -48,7 +59,11 @@ def create_app():
      
      app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL').replace("postgres://", "postgresql://", 1)
      app.secret_key = 'your_secret_key'
-     app.config['SQLALCHEMY_POOL_RECYCLE'] = 600
+     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+     app.config['SQLALCHEMY_POOL_RECYCLE'] = 300
+     app.config['SQLALCHEMY_POOL_TIMEOUT'] = 30
+     app.config['SQLALCHEMY_POOL_SIZE'] = 10
+     app.config['SQLALCHEMY_MAX_OVERFLOW'] = 5
 
      db.init_app(app)
      
@@ -62,6 +77,9 @@ def create_app():
         return User.query.get(int(user_id))
      
      migrate = Migrate(app, db)
+
+     def is_admin(user):
+         return user.is_authenticated and user.role == 'admin'
 
      def get_user_events(user_id):
          """
@@ -101,22 +119,29 @@ def create_app():
              # Save the image with reduced quality
              img.save(file_path, optimize=True, quality=quality)
 
+     
      def send_newsletter_email(newsletter):
-         message = Mail(
-             from_email='events@themovenashville.com',
-             to_emails='blakeurmos@gmail.com',
-             subject=newsletter.subject,
-             html_content=newsletter.html_content)
-         try:
-             sg = SendGridAPIClient(os.environ.get('SENDGRID_API_KEY'))
-             response = sg.send(message)
-             print(response.status_code)
-             print(response.body)
-             print(response.headers)
-         except Exception as e:
-             print(e.message)
-
-     def create_newsletter_content(base_url="https://themove.admin270.repl.co"):
+         recipients = Email.query.with_entities(Email.email).all()  # Query all email addresses
+         emails = [email[0] for email in recipients]  # Extract email addresses from query result
+    
+         # Define the sender with a name and email address
+    
+         for recipient in emails:
+             message = Mail(
+                 from_email=('events@themovenashville.com', 'The Move Nashville'),
+                 to_emails=recipient,
+                 subject=newsletter.subject,
+                 html_content=newsletter.html_content)
+             try:
+                 sg = SendGridAPIClient(os.environ.get('SENDGRID_API_KEY'))
+                 response = sg.send(message)
+                 print(f"Sent to {recipient}: Status {response.status_code}")
+             except Exception as e:
+                 print(f"Error sending to {recipient}: {str(e)}")
+    
+         print("All emails sent.")
+    
+     def create_newsletter_content(base_url="https://themovenashville.com"):
          # Query to get the nearest future 'themove_event' that hasn't had a newsletter created
          current_date = datetime.utcnow()
          featured_event_record = FeaturedEvent.query.join(Event, FeaturedEvent.event_id == Event.id)\
@@ -191,12 +216,19 @@ def create_app():
                  send_newsletter_email(newsletter)
                  newsletter.sent = True  # Mark as sent
                  db.session.commit()
-                 
+
      @app.route('/')
      def home():
          events = db.session.query(Event, Venue).join(Venue, Event.venue_id == Venue.id).all()
+
+         # Fetch featured events
+         featured_events = FeaturedEvent.query.filter_by(is_themove=True)\
+                                              .join(Event, FeaturedEvent.event_id == Event.id)\
+                                              .order_by(Event.time_date)\
+                                              .all()
+
          form = EmailCaptureForm()
-         return render_template('home.html', events=events, form=form)
+         return render_template('home.html', events=events, featured_events=featured_events, form=form)
 
      @app.route('/events/<slug>')
      def event_detail(slug):
@@ -298,8 +330,6 @@ def create_app():
          return redirect(url_for('admin'))
 
 
-   
-
      @app.route('/add-event', methods=['GET', 'POST'])
      @login_required
      def add_event():
@@ -310,18 +340,33 @@ def create_app():
              event_slug = slugify(form.name.data)
 
              if form.image.data:
-                 filename = secure_filename(form.image.data.filename)
-                 directory_path = os.path.join(current_app.static_folder, 'images/venues', venue_slug)
-                 if not os.path.exists(directory_path):
-                     os.makedirs(directory_path)
+                 file = form.image.data
+                 filename = secure_filename(file.filename)
+                 s3_filepath = f'images/venues/{venue_slug}/{filename}'
 
-                 filepath = os.path.join(directory_path, filename)
-                 form.image.data.save(filepath)
+                 # Ensure the temp directory exists
+                 temp_dir = os.path.join(current_app.root_path, 'static/temp')
+                 os.makedirs(temp_dir, exist_ok=True)
 
-                 # Process the image
-                 process_image(filepath)
+                 temp_path = os.path.join(temp_dir, filename)
+                 file.save(temp_path)
 
-                 image_path = filename
+                 # Optimize the image
+                 process_image(temp_path, output_width=600, quality=85)
+
+                 # Upload the optimized image to S3
+                 with open(temp_path, 'rb') as optimized_img:
+                     s3_client.upload_fileobj(
+                         optimized_img,
+                         AWS_S3_BUCKET_NAME,
+                         s3_filepath
+                
+                     )
+
+                 image_path = f'https://{AWS_S3_BUCKET_NAME}.s3.amazonaws.com/{s3_filepath}'
+
+                 # Remove the temporary file
+                 os.remove(temp_path)
              else:
                  image_path = None
 
@@ -332,21 +377,22 @@ def create_app():
                  time_date=form.time_date.data,
                  venue_id=form.venue_id.data,
                  user_id=current_user.id,
-                 image_path=image_path  # Save the filename here
+                 image_path=image_path
              )
              new_event.generate_slug()
              db.session.add(new_event)
              try:
                  db.session.commit()
                  flash('Event has been created successfully!', 'success')
-                 return redirect(url_for('home'))
              except SQLAlchemyError as e:
                  db.session.rollback()
                  flash('An error occurred. Event could not be added.', 'danger')
                  print(e)
 
+             return redirect(url_for('home'))
+
          return render_template('add_event.html', form=form)
-     
+
      @app.route('/venues/<string:venue_slug>')
      def venue_detail(venue_slug):
          venue = Venue.query.filter_by(slug=venue_slug).first_or_404()
@@ -354,19 +400,7 @@ def create_app():
          print("Upcoming Events:", upcoming_events)  # Debugging print statement
          return render_template('venue_detail.html', venue=venue, venue_slug=venue_slug, upcoming_events=upcoming_events)
 
-     @app.route('/edit-venue/<int:venue_id>', methods=['GET', 'POST'])
-     @login_required
-     def edit_venue(venue_id):
-         venue = Venue.query.get_or_404(venue_id)
-
-         if request.method == 'POST':
-             venue.name = request.form['name']
-             # Update other venue fields as needed
-             db.session.commit()
-             flash('Venue updated successfully.', 'success')
-             return redirect(url_for('admin'))
-
-         return render_template('edit_venue.html', venue=venue)
+ 
 
      @app.route('/delete-venue/<int:venue_id>', methods=['POST'])
      @login_required
@@ -445,10 +479,12 @@ def create_app():
          user_events = get_user_events(current_user.id)
          return render_template('account/account.html', section='my-events', events=user_events)
 
+
      @app.route('/edit-event/<int:event_id>', methods=['GET', 'POST'])
      @login_required
      def edit_event(event_id):
          event = Event.query.get_or_404(event_id)
+         featured_event = FeaturedEvent.query.filter_by(event_id=event_id).first()
          venue = Venue.query.get(event.venue_id)
 
          if current_user.id != event.user_id and current_user.role != 'admin':
@@ -456,25 +492,43 @@ def create_app():
              return redirect(url_for('account_my_events'))
 
          form = EventForm(obj=event)
+         is_themove = featured_event.is_themove if featured_event else False
+
          if form.validate_on_submit():
              venue = Venue.query.get(form.venue_id.data)
              venue_slug = slugify(venue.name)
              event_slug = slugify(form.name.data)
 
              if form.image.data:
-                 filename = secure_filename(form.image.data.filename)
-                 directory_path = os.path.join(current_app.static_folder, 'images/venues', venue_slug)
-                 if not os.path.exists(directory_path):
-                     os.makedirs(directory_path)
+                 file = form.image.data
+                 filename = secure_filename(file.filename)
+                 s3_filepath = f'images/venues/{venue_slug}/{filename}'
 
-                 filepath = os.path.join(directory_path, filename)
-                 form.image.data.save(filepath)
+                 # Ensure the temp directory exists
+                 temp_dir = os.path.join(current_app.root_path, 'static/temp')
+                 os.makedirs(temp_dir, exist_ok=True)
 
-                 # Process the image
-                 process_image(filepath)
+                 temp_path = os.path.join(temp_dir, filename)
+                 file.save(temp_path)
 
-                 # Update the image path correctly
-                 event.image_path = os.path.join(filename)
+                 # Optimize the image
+                 process_image(temp_path, output_width=600, quality=85)
+
+                 # Upload the optimized image to S3
+                 with open(temp_path, 'rb') as optimized_img:
+                     s3_client.upload_fileobj(
+                         optimized_img,
+                         AWS_S3_BUCKET_NAME,
+                         s3_filepath
+                     )
+
+                 image_path = f'https://{AWS_S3_BUCKET_NAME}.s3.amazonaws.com/{s3_filepath}'
+
+                 # Remove the temporary file
+                 os.remove(temp_path)
+
+                 # Update the image path in the database
+                 event.image_path = image_path
 
              # Update other event details
              event.name = form.name.data
@@ -483,11 +537,24 @@ def create_app():
              event.venue_id = form.venue_id.data
              event.slug = event_slug
 
+             # Admin-only: Update the 'is_themove' status for the featured event
+             if current_user.role == 'admin':
+                 is_themove_status = 'is_themove' in request.form and request.form.get('is_themove') == 'on'
+                 if is_themove_status:
+                     if featured_event:
+                         featured_event.is_themove = True
+                     else:
+                         new_featured_event = FeaturedEvent(event_id=event.id, is_themove=True)
+                         db.session.add(new_featured_event)
+                 elif featured_event:
+                     featured_event.is_themove = False
+
              db.session.commit()
              flash('Event updated successfully!', 'success')
              return redirect(url_for('account_my_events'))
 
-         return render_template('account/edit_event.html', form=form, event=event, venue=venue)
+         return render_template('account/edit_event.html', form=form, event=event, venue=venue, is_themove=is_themove)
+
 
      @app.route('/delete-event/<int:event_id>', methods=['POST'])
      @login_required
@@ -539,39 +606,175 @@ def create_app():
                  instagram_handle=form.instagram_handle.data,
                  phone=form.phone.data,
                  address_1=form.address_1.data,
-                 address_2=form.address_2.data
+                 address_2=form.address_2.data,
+                 user_id=current_user.id,
+                 description=form.description.data
+
              )
 
              if form.image.data:
-                 filename = secure_filename(form.image.data.filename)
+                 file = form.image.data
+                 filename = secure_filename(file.filename)
                  venue_slug = slugify(venue.name)
-                 filepath = os.path.join(current_app.static_folder, 'images/venues', venue_slug, filename)
-                 form.image.data.save(filepath)
-                 venue.image_path = os.path.join('images/venues', venue_slug, filename)
+                 s3_filepath = f'images/venues/{venue_slug}/{filename}'
+
+                 # Save image temporarily for optimization
+                 temp_path = os.path.join(current_app.static_folder, 'temp', filename)
+                 file.save(temp_path)
 
                  # Process the image
-                 process_image(filepath)
+                 process_image(temp_path)
+
+                 # Upload the optimized file to S3
+                 with open(temp_path, 'rb') as optimized_file:
+                     s3_client.upload_fileobj(
+                         optimized_file,
+                         AWS_S3_BUCKET_NAME,
+                         s3_filepath
+                     )
+
+                 # Set the S3 URL as the image path
+                 venue.image_path = f'https://{AWS_S3_BUCKET_NAME}.s3.amazonaws.com/{s3_filepath}'
+
+                 # Remove the temporary file
+                 os.remove(temp_path)
+             else:
+                 venue.image_path = None
 
              venue.generate_slug()
              db.session.add(venue)
              try:
                  db.session.commit()
                  flash('Venue has been added successfully!', 'success')
-                 return redirect(url_for('add_venue'))
              except SQLAlchemyError as e:
                  db.session.rollback()
                  flash('An error occurred. Venue could not be added.', 'danger')
                  print(e)
 
+             return redirect(url_for('add_venue'))
+
          return render_template('add_venue.html', form=form)
+
+     @app.route('/account/my-venues', methods=['GET'])
+     @login_required
+     def account_my_venues():
+         user_venues = Venue.query.filter_by(user_id=current_user.id).all()
+         return render_template('account/my_venues.html', venues=user_venues)
+         
+     @app.route('/edit-venue/<int:venue_id>', methods=['GET', 'POST'])
+     @login_required
+     def edit_venue(venue_id):
+         venue = Venue.query.get_or_404(venue_id)
+         if venue.user_id != current_user.id:
+             flash('You are not authorized to edit this venue.', 'danger')
+             return redirect(url_for('account_my_venues'))
+
+         form = VenueForm(obj=venue)
+         if form.validate_on_submit():
+             # Process the image if it's updated
+             if form.image.data:
+                 file = form.image.data
+                 filename = secure_filename(file.filename)
+                 s3_filepath = f'images/venues/{venue.slug}/{filename}'
+
+                 # Process the image
+                 temp_path = os.path.join(current_app.static_folder, 'temp', filename)
+                 file.save(temp_path)
+                 process_image(temp_path)
+
+                 # Upload the optimized image to S3
+                 with open(temp_path, 'rb') as data:
+                     s3_client.upload_fileobj(
+                         data,
+                         AWS_S3_BUCKET_NAME,
+                         s3_filepath
+                         )
+
+                 # Remove the temporary file
+                 os.remove(temp_path)
+
+                 # Update the image path
+                 venue.image_path = f'https://{AWS_S3_BUCKET_NAME}.s3.amazonaws.com/{s3_filepath}'
+
+             # Update other venue details
+             venue.name = form.name.data
+             venue.address_1 = form.address_1.data
+             venue.address_2 = form.address_2.data
+             venue.city = form.city.data
+             venue.state = form.state.data
+             venue.zip = form.zip.data
+             venue.phone = form.phone.data
+             venue.website = form.website.data
+             venue.instagram_handle = form.instagram_handle.data
+             venue.description = form.description.data
+             # ... update other fields as necessary ...
+
+             db.session.commit()
+             flash('Venue updated successfully!', 'success')
+             return redirect(url_for('account_my_venues'))
+
+         return render_template('account/edit_venue.html', form=form, venue=venue)
+
+     @app.route('/account/all-events')
+     @login_required
+     def account_all_events():
+         if not is_admin(current_user):
+             flash('You must be an admin to access this page.', 'danger')
+             return redirect(url_for('account_profile'))
+
+         events = Event.query.all()
+         return render_template('account/all_events.html', events=events)
+
+     @app.route('/account/all-venues')
+     @login_required
+     def account_all_venues():
+         if not is_admin(current_user):
+             flash('You must be an admin to access this page.', 'danger')
+             return redirect(url_for('account_profile'))
+
+         venues = Venue.query.all()
+         return render_template('account/all_venues.html', venues=venues)
+
+     @app.route('/sitemap.xml')
+     def sitemap():
+         host_components = request.host.split('.')
+         base_url = request.host_url
+         if "localhost" not in host_components:
+             base_url = "https://themovenashville.com"
+
+         # Collect all URLs
+         urls = []
+
+         # Static routes
+         urls.append(["/", "monthly", 1.0])
+         urls.append(["/about", "yearly", 0.8])
+         # Add more static URLs as needed
+
+         # Dynamic routes (e.g., events, venues)
+         events = Event.query.all()
+         for event in events:
+             url = f"/events/{event.slug}"
+             urls.append([url, "weekly", 0.8])
+         # Add other dynamic content like venues, etc.
+
+         for venue in Venue.query.all():
+             url = f"/venues/{venue.slug}"
+             urls.append([url, "weekly", 0.8])
+
+         xml_sitemap = render_template('sitemap_template.xml', base_url=base_url, urls=urls)
+         response = make_response(xml_sitemap)
+         response.headers["Content-Type"] = "application/xml"
+
+         return response
+
 
      scheduler = APScheduler()
      scheduler.init_app(app)
      scheduler.start()
-     #scheduler.add_job(func=lambda: store_weekly_newsletter(app), trigger='interval', minutes=1, id='newsletter_job')
-     scheduler.add_job(func=lambda: store_weekly_newsletter(app), trigger='cron', day='*', id='newsletter_job')
-     #scheduler.add_job(func=lambda: send_daily_newsletter(app), trigger='interval', minutes=1, id='daily_newsletter_job')
-     scheduler.add_job(func=lambda: send_daily_newsletter(app), trigger='cron', day='*', id='daily_newsletter_job')
+     scheduler.add_job(func=lambda: store_weekly_newsletter(app), trigger='interval', minutes=60, id='newsletter_job')
+     #scheduler.add_job(func=lambda: store_weekly_newsletter(app), trigger='cron', day='*', id='newsletter_job')
+     scheduler.add_job(func=lambda: send_daily_newsletter(app), trigger='interval', minutes=60, id='daily_newsletter_job')
+     #scheduler.add_job(func=lambda: send_daily_newsletter(app), trigger='cron', day='*', id='daily_newsletter_job')
 
      return app
 
