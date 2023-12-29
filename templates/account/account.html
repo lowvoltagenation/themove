@@ -21,6 +21,9 @@
                 <li class="{{ 'active' if section == 'all-venues' else '' }}">
                     <a href="{{ url_for('account_all_venues') }}">All Venues</a>
                 </li>
+                <li class="{{ 'active' if section == 'newsletter' else '' }}">
+                    <a href="{{ url_for('account_newsletter') }}">Newsletter</a>
+                </li>
             {% endif %}
             <li class="{{ 'active' if section == 'change-password' else '' }}">
                 <a href="{{ url_for('change_password') }}">Change Password</a>
@@ -29,26 +32,26 @@
         </ul>
     </aside>
 
-    <!-- In account.html -->
-    {% block account_content %}
 
 
     <section class="account-content">
+        {% block account_content %}
         {% if section == 'profile' %}
             {% include 'account/profile_section.html' %}
         {% elif section == 'my-events' %}
             {% include 'account/my_events.html' %}
         {% elif section == 'edit-event' %}
-            {% with event=event %}
-                {% include 'account/edit-event.html' %}
-            {% endwith %}
+            <!-- Edit event logic -->
         {% elif section == 'my_venues' %}
             {% include 'account/my_venues.html' %}
         {% elif section == 'change-password' %}
             {% include 'account/change_password.html' %}
+        {% elif section == 'newsletter' %}
+            {% include 'account/newsletter.html' %}
         {% endif %}
+        {% endblock %}
     </section>
-    {% endblock %}
+
 </div>
 {% endblock %}
 

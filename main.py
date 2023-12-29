@@ -57,7 +57,7 @@ s3_client = boto3.client(
 def create_app():
      app = Flask(__name__)
      
-     app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL').replace("postgres://", "postgresql://", 1)
+     app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('RDS_DATABASE_URL').replace("postgres://", "postgresql://", 1)
      app.secret_key = 'your_secret_key'
      app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
      app.config['SQLALCHEMY_POOL_RECYCLE'] = 300
@@ -140,92 +140,159 @@ def create_app():
                  print(f"Error sending to {recipient}: {str(e)}")
     
          print("All emails sent.")
-    
-     def create_newsletter_content(base_url="https://themovenashville.com"):
-         # Query to get the nearest future 'themove_event' that hasn't had a newsletter created
-         current_date = datetime.utcnow()
-         featured_event_record = FeaturedEvent.query.join(Event, FeaturedEvent.event_id == Event.id)\
-                                                     .filter(Event.time_date >= current_date, FeaturedEvent.newsletter_created == False)\
-                                                     .order_by(Event.time_date)\
-                                                     .first()
-    
-         themove_event = None
-         venue_slug = 'default'
-         event_name = None
-         event_date = None
-    
-         if featured_event_record:
-             themove_event = Event.query.get(featured_event_record.event_id)
-             if themove_event:
-                 event_name = themove_event.name
-                 event_date = themove_event.time_date.strftime('%Y-%m-%d')
-                 if themove_event.venue:
-                     venue_slug = themove_event.venue.slug
-    
-         # Query for upcoming events, sponsors, and featured images
+
+     def create_newsletter_content(base_url="https://themovenashville.com", event_id=None):
+         # Fetch all upcoming events
          upcoming_events = Event.query.filter(Event.time_date >= datetime.utcnow()).order_by(Event.time_date).all()
          sponsors = Sponsor.query.all()
          featured_images = FeaturedImage.query.all()
-    
-         # Render the template
+
+         # Initialize themove_event
+         themove_event = None
+
+         # If a specific event_id is provided, find that event
+         if event_id:
+             themove_event = Event.query.get(event_id)
+             if not themove_event:
+                 raise ValueError("Event not found")
+
+         # Render the newsletter template with all data
          html_content = render_template('newsletter_content.html',
                                         base_url=base_url,
                                         themove_event=themove_event,
-                                        venue_slug=venue_slug,
                                         upcoming_events=upcoming_events,
                                         sponsors=sponsors,
                                         featured_images=featured_images)
-    
+
+         # Return HTML content along with event name and date, if applicable
+         event_name = themove_event.name if themove_event else None
+         event_date = themove_event.time_date.strftime('%Y-%m-%d') if themove_event else None
+
          return html_content, event_name, event_date
-     
-     def store_weekly_newsletter(app):
-         with app.app_context():
-             # Get the nearest future 'themove_event' that hasn't had a newsletter created
-             current_date = datetime.utcnow()
-             featured_event = FeaturedEvent.query.join(Event, FeaturedEvent.event_id == Event.id)\
-                                                 .filter(Event.time_date >= current_date, FeaturedEvent.newsletter_created == False)\
-                                                 .order_by(Event.time_date)\
-                                                 .first()
 
+     def store_weekly_newsletter(app, event_id=None):
+         with app.app_context():
+             # Check if a specific event_id is provided
+             if event_id:
+                 featured_event = FeaturedEvent.query.filter_by(event_id=event_id, newsletter_created=False).first()
+                 if not featured_event:
+                     # Handle the case where the event is not found or already has a newsletter
+                     print(f"No eligible event found for event_id {event_id}")
+                     return
+             else:
+                 # Logic to find the next upcoming event that hasn't had a newsletter created
+                 current_date = datetime.utcnow()
+                 featured_event = FeaturedEvent.query.join(Event, FeaturedEvent.event_id == Event.id) \
+                                                     .filter(Event.time_date >= current_date, FeaturedEvent.newsletter_created == False) \
+                                                     .order_by(Event.time_date) \
+                                                     .first()
+
+             # Proceed if a suitable event is found
              if featured_event:
-                 html_content, event_name, event_date = create_newsletter_content()
+                 event = Event.query.get(featured_event.event_id)
+                 if event:
+                     html_content, event_name, event_date = create_newsletter_content(event_id=event.id)
 
-                 # Format the subject line
-                 if event_name and event_date:
-                     formatted_event_date = datetime.strptime(event_date, '%Y-%m-%d').strftime('%m/%d/%Y')
-                     subject = f"The Move: {event_name} {formatted_event_date}"
+                     # Format the subject line
+                     if event_name and event_date:
+                         formatted_event_date = datetime.strptime(event_date, '%Y-%m-%d').strftime('%m/%d/%Y')
+                         subject = f"The Move: {event_name} {formatted_event_date}"
+                     else:
+                         subject = "Weekly Newsletter - {}".format(datetime.utcnow().strftime('%Y-%m-%d'))
+
+                     # Create and add the new newsletter
+                     new_newsletter = Newsletter(subject=subject, html_content=html_content)
+                     db.session.add(new_newsletter)
+
+                     try:
+                         db.session.commit()
+                         # Update featured_event's newsletter_created flag and link the newsletter
+                         featured_event.newsletter_created = True
+                         featured_event.newsletter_id = new_newsletter.id
+                         db.session.commit()
+                         print("Newsletter created and stored successfully.")
+                     except SQLAlchemyError as e:
+                         db.session.rollback()
+                         print(f"Failed to add newsletter to database: {e}")
                  else:
-                     subject = "Weekly Newsletter - {}".format(datetime.utcnow().strftime('%Y-%m-%d'))
-
-                 new_newsletter = Newsletter(subject=subject, html_content=html_content)
-                 db.session.add(new_newsletter)
-                 try:
-                     db.session.commit()
-                     # Update featured_event's newsletter_created flag
-                     featured_event.newsletter_created = True
-                     db.session.commit()
-                 except SQLAlchemyError as e:
-                     db.session.rollback()
-                     print("Failed to add newsletter to database.", e)
+                     print(f"No event found for the given featured_event {featured_event.id}")
+             else:
+                 print("No eligible upcoming event found for newsletter creation.")
 
 
-     def send_daily_newsletter(app):
+     def send_daily_newsletter(app, newsletter_id=None):
          with app.app_context():
-             newsletter = Newsletter.query.filter_by(sent=False).order_by(Newsletter.created_at.desc()).first()
+             if newsletter_id:
+                 newsletter = Newsletter.query.get(newsletter_id)
+             else:
+                 newsletter = Newsletter.query.filter_by(sent=False).order_by(Newsletter.created_at.desc()).first()
+
              if newsletter:
                  send_newsletter_email(newsletter)
-                 newsletter.sent = True  # Mark as sent
+                 newsletter.sent = True
                  db.session.commit()
+
+     @app.route('/account/newsletter', methods=['GET', 'POST'])
+     @login_required
+     def account_newsletter():
+         if current_user.role != 'admin':
+             flash('Access denied: Admins only.', 'danger')
+             return redirect(url_for('account_profile'))
+
+          # Fetch all featured events
+         featured_events = FeaturedEvent.query.join(Event, FeaturedEvent.event_id == Event.id).all()
+
+         return render_template('account/newsletter.html', section='newsletter', featured_events=featured_events)
+
+
+     @app.route('/create-newsletter/<int:event_id>', methods=['POST'])
+     @login_required
+     def create_specific_newsletter(event_id):
+         if not is_admin(current_user):
+             flash('Access denied: Admins only.', 'danger')
+             return redirect(url_for('account_profile'))
+
+         try:
+             store_weekly_newsletter(current_app._get_current_object(), event_id)
+             flash('Newsletter created successfully for the event.', 'success')
+         except Exception as e:
+             flash('Error creating newsletter: ' + str(e), 'danger')
+
+         return redirect(url_for('account_newsletter'))
+
+     @app.route('/send-newsletter/<int:newsletter_id>', methods=['POST'])
+     @login_required
+     def send_specific_newsletter(newsletter_id):
+         if not is_admin(current_user):
+             flash('Access denied: Admins only.', 'danger')
+             return redirect(url_for('account_profile'))
+
+         try:
+             send_daily_newsletter(current_app._get_current_object(), newsletter_id)
+             flash('Newsletter sent successfully.', 'success')
+         except Exception as e:
+             flash('Error sending newsletter: ' + str(e), 'danger')
+
+         return redirect(url_for('account_newsletter'))
 
      @app.route('/')
      def home():
-         events = db.session.query(Event, Venue).join(Venue, Event.venue_id == Venue.id).all()
+         # Get the current date and time
+         current_time = datetime.utcnow()
 
-         # Fetch featured events
-         featured_events = FeaturedEvent.query.filter_by(is_themove=True)\
-                                              .join(Event, FeaturedEvent.event_id == Event.id)\
-                                              .order_by(Event.time_date)\
-                                              .all()
+         # Query upcoming events that are in the future
+         events = db.session.query(Event, Venue)\
+                                     .join(Venue, Event.venue_id == Venue.id)\
+                                     .filter(Event.time_date > current_time)\
+                                     .order_by(Event.time_date)\
+                                     .all()
+
+         # Fetch featured events that are in the future and have the is_themove flag
+         featured_events = FeaturedEvent.query\
+                                         .join(Event, FeaturedEvent.event_id == Event.id)\
+                                         .filter(Event.time_date > current_time, FeaturedEvent.is_themove == True)\
+                                         .order_by(Event.time_date)\
+                                         .all()
 
          form = EmailCaptureForm()
          return render_template('home.html', events=events, featured_events=featured_events, form=form)
@@ -556,6 +623,9 @@ def create_app():
          return render_template('account/edit_event.html', form=form, event=event, venue=venue, is_themove=is_themove)
 
 
+     
+
+
      @app.route('/delete-event/<int:event_id>', methods=['POST'])
      @login_required
      def delete_event(event_id):
@@ -771,9 +841,9 @@ def create_app():
      scheduler = APScheduler()
      scheduler.init_app(app)
      scheduler.start()
-     scheduler.add_job(func=lambda: store_weekly_newsletter(app), trigger='interval', minutes=60, id='newsletter_job')
+     scheduler.add_job(func=lambda: store_weekly_newsletter(app), trigger='interval', minutes=1, id='newsletter_job')
      #scheduler.add_job(func=lambda: store_weekly_newsletter(app), trigger='cron', day='*', id='newsletter_job')
-     scheduler.add_job(func=lambda: send_daily_newsletter(app), trigger='interval', minutes=60, id='daily_newsletter_job')
+     scheduler.add_job(func=lambda: send_daily_newsletter(app), trigger='interval', minutes=1, id='daily_newsletter_job')
      #scheduler.add_job(func=lambda: send_daily_newsletter(app), trigger='cron', day='*', id='daily_newsletter_job')
 
      return app

@@ -72,7 +72,9 @@ class FeaturedEvent(db.Model):
     event_id = db.Column(db.Integer, db.ForeignKey('event.id'))
     is_themove = db.Column(db.Boolean, default=False, nullable=False)
     newsletter_created = db.Column(db.Boolean, default=False)
-    event = db.relationship('Event', backref='featured_events') # Add this line
+    event = db.relationship('Event', backref='featured_events')
+    newsletter_id = db.Column(db.Integer, db.ForeignKey('newsletters.id'))
+    newsletter = db.relationship('Newsletter', backref='featured_event')# Add this line
 
     # ... other fields ...
 

@@ -558,23 +558,25 @@ transition: transform 0.3s ease, box-shadow 0.3s ease; /* Add smooth transition 
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-top: 20px; /* Add some space at the top */
+  margin-top: 0px; /* Add some space at the top */
   margin-bottom: 20px; /* Add some space at the bottom */
+ 
 }
 
 .email-capture-form {
   display: flex;
   align-items: center;
+  flex-direction: column; /* Stack elements vertically on all screen sizes */
 }
 
 .email-input {
   flex-grow: 1; /* Allows input to fill the available space */
-  margin-right: 10px; /* Space between input and button */
+  margin-bottom: 10px; /* Space between input and button */
   padding: 10px;
   font-size: 1.2em; /* Larger text inside input */
   border: 2px solid #ccc; /* Makes the border thicker */
   border-radius: 5px; /* Slightly rounded corners for the input */
-	width: 300px;
+  width: 100%; /* Full width on small screens */
 }
 
 .email-submit {
@@ -585,19 +587,31 @@ transition: transform 0.3s ease, box-shadow 0.3s ease; /* Add smooth transition 
   border: none;
   border-radius: 5px; /* Slightly rounded corners for the button */
   cursor: pointer;
+  width: 100%; /* Full width on small screens */
 }
 
-/* Additional responsiveness for smaller screens */
-@media (max-width: 600px) {
+/* Adjust layout for larger screens */
+@media (min-width: 601px) {
   .email-capture-form {
-	 flex-direction: column;
+	 flex-direction: row; /* Elements side by side on larger screens */
   }
 
   .email-input {
-	 margin-right: 0;
-	 margin-bottom: 10px; /* Space between input and button on small screens */
+	 width: 400px; /* Adjust this value as needed for larger screens */
+	 margin-bottom: 0; /* Reset margin-bottom */
+  }
+  .email-submit {
+	 width: 200px; /* Adjust this value as needed for larger screens */
+	 margin-bottom: 0; /* Reset margin-bottom */
+  }
+	
+
+  .email-input {
+	 margin-right: 10px; /* Space between input and button */
   }
 }
+
+
 
 /* Ensure the container centers everything and has some padding */
 .upcoming-card-container {
@@ -1040,7 +1054,20 @@ transition: transform 0.3s ease, box-shadow 0.3s ease; /* Add smooth transition 
 .featured-event-card h2 {
 	 font-size: 1.5em; /* Larger text */
 }
+.event-date, .event-location {
+	 text-align: center;
+	 /* ... other styles if needed ... */
+}
+.featured-event-card-link, .featured-event-card-link:hover, .featured-event-card-link:visited {
+	 text-decoration: none; /* Removes underline */
+	 color: inherit; /* Keeps the text color consistent */
+}
 
+
+.featured-card-content {	 
+	background-color: #fff8e0; 
+	text-align: center
+}
 /* Responsive adjustments for smaller screens */
 @media (max-width: 768px) {
 	 .featured-events-container {

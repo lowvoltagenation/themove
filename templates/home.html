@@ -11,6 +11,8 @@
         <button class="email-submit" type="submit">Get on The List</button>
       </form>
     </div>
+
+
     <div class="featured-events-container">
         {% for featured_event in featured_events %}
         <a href="{{ url_for('event_detail', slug=featured_event.event.slug) }}" class="featured-event-card-link">
@@ -18,9 +20,9 @@
                 <div class="event-image-container">
                     <img src="{{ featured_event.event.image_path if featured_event.event.image_path else 'images/default_event_image.jpg' }}" alt="{{ featured_event.event.name }}">
                 </div>
-                <div class="card-content">
+                <div class="featured-card-content">
                     <h2>{{ featured_event.event.name }}</h2>
-                    <p class="event-location">{{ featured_event.event.venue.name }}</p>
+                    <p class="event-location"><b>{{ featured_event.event.venue.name }}</b></p>
                     <p class="event-date">{{ featured_event.event.time_date.strftime('%A, %B %d, %Y %I:%M %p') }}</p>
                 </div>
             </div>
@@ -28,7 +30,7 @@
         {% endfor %}
     </div>
 
-    <h1>Upcoming Events (Comming Soon)</h1>
+    <h1>Upcoming Events</h1>
     <div class="card-container">
         {% for event, venue in events %}
         <a href="{{ url_for('event_detail', slug=event.slug) }}" class="card-link">
