@@ -4,11 +4,11 @@
 	
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-	 <title>{% block title %}Default Title | The Move{% endblock %}</title>
+	 <title>{% block title %}The Move Nashville{% endblock %}</title>
 	 <meta name="description" content="{% block description %}Default description{% endblock %}">
 	 <!-- Open Graph / Facebook -->
 	 <meta property="og:type" content="website">
-	 <meta property="og:title" content="{% block og_title %}Default Title | The Move{% endblock %}">
+	 <meta property="og:title" content="{% block og_title %}The Move Nashville | The Move{% endblock %}">
 	 <meta property="og:description" content="{% block og_description %}Default description{% endblock %}">
 	 <meta property="og:image" content="{% block og_image %}Default Image URL{% endblock %}">
 	 <!-- Twitter -->
@@ -17,7 +17,9 @@
 	 <meta property="twitter:description" content="{% block twitter_description %}Default description{% endblock %}">
 	 <meta property="twitter:image" content="{% block twitter_image %}Default Image URL{% endblock %}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-	 <!-- Google Analytics -->
+	 <link rel="icon" href="{{ url_for('static', filename='images/themove-icon-highlight.png') }}" type="image/x-icon">
+
+	<!-- Google Analytics -->
 	<!-- Google tag (gtag.js) -->
 	<script async src="https://www.googletagmanager.com/gtag/js?id=G-CF8C8S5Y56"></script>
 	<script>
@@ -60,10 +62,19 @@
         {% block content %}
         {% endblock %}
     </main>
-    <footer>
-        <div class="container">
-            <p>&copy; 2023 The Move. All Rights Reserved.</p>
-        </div>
-    </footer>
+	 <footer>
+		  <div class="container">
+				<p>&copy; 2023 The Move. All Rights Reserved.</p>
+				<!-- Social media icons -->
+				<div class="social-media-icons">
+					 <a href="https://www.facebook.com/themovenash" target="_blank" title="Follow us on Facebook">
+						  <img src="{{ url_for('static', filename='images/facebook-icon.png') }}" alt="Facebook">
+					 </a>
+					 <a href="https://www.instagram.com/themovenashville" target="_blank" title="Follow us on Instagram">
+						  <img src="{{ url_for('static', filename='images/instagram-icon.png') }}" alt="Instagram">
+					 </a>
+				</div>
+		  </div>
+	 </footer>
 </body>
 </html>

@@ -11,8 +11,18 @@
         </div>
         {% for featured_event in featured_events %}
         <div class="events-table-row">
-            <div class="event-name">{{ featured_event.event.name }}</div>
-            <div class="event-date">{{ featured_event.event.time_date.strftime('%Y-%m-%d %H:%M') }}</div>
+            <div class="event-name">
+                <a href="{{ url_for('edit_event', event_id=featured_event.event_id) }}">{{ featured_event.event.name }}</a>
+            </div>
+            <div class="event-date">
+                {% if featured_event.newsletter_id %}
+                    <!-- Date is clickable if newsletter ID exists -->
+                    <a href="{{ url_for('view_newsletter', newsletter_id=featured_event.newsletter_id) }}">{{ featured_event.event.time_date.strftime('%Y-%m-%d %H:%M') }}</a>
+                {% else %}
+                    <!-- Display date as text if no newsletter ID -->
+                    {{ featured_event.event.time_date.strftime('%Y-%m-%d %H:%M') }}
+                {% endif %}
+            </div>
             <div class="event-action">
                 {% if featured_event.newsletter_created and featured_event.newsletter_id %}
                     <!-- Display Send Newsletter button if newsletter exists and id is set -->

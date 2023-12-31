@@ -1075,3 +1075,18 @@ transition: transform 0.3s ease, box-shadow 0.3s ease; /* Add smooth transition 
 	 }
 }
 
+.social-media-icons {
+	 display: flex;
+	 justify-content: center;
+	 align-items: center;
+	 /* Add other styling as needed */
+}
+
+.social-media-icons a {
+	 margin: 10px;
+}
+
+.social-media-icons img {
+	 width: 20px; /* Adjust the size as needed */
+	 height: auto;
+}

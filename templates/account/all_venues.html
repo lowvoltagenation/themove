@@ -11,7 +11,15 @@
         </div>
         {% for venue in venues %}
         <div class="venues-table-row">
-            <div class="venue-name">{{ venue.name }}</div>
+            <div class="venue-name">
+                {% if venue.instagram_handle %}
+                    <!-- Venue name is clickable if Instagram handle exists -->
+                    <a href="https://instagram.com/{{ venue.instagram_handle }}" target="_blank">{{ venue.name }}</a>
+                {% else %}
+                    <!-- Display venue name as text if no Instagram handle -->
+                    {{ venue.name }}
+                {% endif %}
+            </div>
             <div class="venue-city">{{ venue.city }}</div>
             <div class="venue-action">
                 <a href="{{ url_for('edit_venue', venue_id=venue.id) }}" class="btn-edit">Edit</a>
@@ -23,7 +31,7 @@
         </div>
         {% else %}
         <div class="venues-table-row">
-            <div colspan="4">No venues found.</div>
+            <div colspan="3">No venues found.</div>
         </div>
         {% endfor %}
     </div>

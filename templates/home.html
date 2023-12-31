@@ -1,6 +1,12 @@
 {% extends 'base.html' %}
 {% block title %}Nashville Nightlife Events | The Move{% endblock %}
-
+{% block description %}Nashville Nightlife Events. Sign up to get on the list!{% endblock %}
+{% block og_title %}Nashville Nightlife Events | The Move{% endblock %}
+{% block og_description %}Nashville Nightlife Events. Sign up to get on the list!{% endblock %}
+{% block og_image %}{{ url_for('static', filename='images/logo-square.png') }}{% endblock %}
+{% block twitter_title %}Nashville Nightlife Events | The Move{% endblock %}
+{% block twitter_description %}Nashville Nightlife Events. Sign up to get on the list!{% endblock %}
+{% block twitter_image %}{{ url_for('static', filename='images/logo-square.png') }}{% endblock %}
 {% block content %}
 <div class="container">
     <!-- Add this block to your home.html where you want the form -->

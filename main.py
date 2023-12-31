@@ -841,9 +841,9 @@ def create_app():
      scheduler = APScheduler()
      scheduler.init_app(app)
      scheduler.start()
-     scheduler.add_job(func=lambda: store_weekly_newsletter(app), trigger='interval', minutes=1, id='newsletter_job')
+     scheduler.add_job(func=lambda: store_weekly_newsletter(app), trigger='interval', minutes=60, id='newsletter_job')
      #scheduler.add_job(func=lambda: store_weekly_newsletter(app), trigger='cron', day='*', id='newsletter_job')
-     scheduler.add_job(func=lambda: send_daily_newsletter(app), trigger='interval', minutes=1, id='daily_newsletter_job')
+     scheduler.add_job(func=lambda: send_daily_newsletter(app), trigger='interval', minutes=60, id='daily_newsletter_job')
      #scheduler.add_job(func=lambda: send_daily_newsletter(app), trigger='cron', day='*', id='daily_newsletter_job')
 
      return app

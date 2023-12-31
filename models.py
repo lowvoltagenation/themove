@@ -101,5 +101,3 @@ class Newsletter(db.Model):
     subject = db.Column(db.String(255), nullable=False)
     html_content = db.Column(db.Text, nullable=False)
 
-
-    # ... other fields you might need, like status, send_date, etc. ...
